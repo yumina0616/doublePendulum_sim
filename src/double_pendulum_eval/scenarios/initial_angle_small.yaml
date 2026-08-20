@@ -1,0 +1,24 @@
+name: initial_angle_small
+description: >
+  Gentle nudge -- small-signal response check. Should settle fast with low
+  overshoot; if this one fails but nominal_balance passes, suspect a sign
+  or gain-tuning issue rather than instability.
+
+disturbance:
+  tau1: 5.0
+  tau2: 0.0
+  pulse_duration: 0.15
+  rate_hz: 500.0
+
+settle_time_before_s: 1.0
+total_duration_s: 5.0
+settle_band_deg: 1.0
+
+acceptance:
+  stable: true
+  settling_time_q1_s: {max: 2.0}
+  settling_time_q2_s: {max: 2.0}
+  overshoot_q1_deg: {max: 15.0}
+  overshoot_q2_deg: {max: 15.0}
+  max_abs_tau1_nm: {max: 60.0}
+  max_abs_tau2_nm: {max: 30.0}

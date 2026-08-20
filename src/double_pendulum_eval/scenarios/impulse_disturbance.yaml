@@ -1,0 +1,23 @@
+name: impulse_disturbance
+description: >
+  Larger impulse -- robustness check near the actuator limits. Some
+  overshoot is expected; the bar is recovery, not a clean response.
+
+disturbance:
+  tau1: 35.0
+  tau2: 0.0
+  pulse_duration: 0.4
+  rate_hz: 500.0
+
+settle_time_before_s: 1.0
+total_duration_s: 8.0
+settle_band_deg: 1.5
+
+acceptance:
+  stable: true
+  settling_time_q1_s: {max: 5.0}
+  settling_time_q2_s: {max: 5.0}
+  overshoot_q1_deg: {max: 60.0}
+  overshoot_q2_deg: {max: 60.0}
+  max_abs_tau1_nm: {max: 60.0}
+  max_abs_tau2_nm: {max: 30.0}

@@ -4,7 +4,11 @@ project(double_pendulum_eval)
 find_package(ament_cmake REQUIRED)
 
 install(
-  PROGRAMS disturbance.py
+  PROGRAMS disturbance.py run_experiment.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(
+  FILES metrics.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
