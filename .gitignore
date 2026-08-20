@@ -1,0 +1,12 @@
+# colcon build artifacts
+build/
+install/
+log/
+
+# third-party dependency built from source (see private/기획서 -- clone
+# github.com/ros-controls/gz_ros2_control, humble branch, yourself)
+src/gz_ros2_control/
+
+# python
+__pycache__/
+*.pyc

@@ -1,0 +1,155 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="double_pendulum">
+
+  <!--
+    Coordinate convention (matches the original PID/LQR design doc):
+      q1 = joint1 angle, absolute, measured from straight-up (+Z). q1=0 -> link1 upright.
+      q2 = joint2 angle, relative to link1. q2=0 -> link2 in line with link1 (also upright).
+    Both links extend from their joint toward +Z when angle = 0, so the
+    "controller target" x_ref = [0,0,0,0] is the fully inverted (upright) pose,
+    which is the *unstable* equilibrium; spawning with zero effort will fall,
+    which is what Stage A (open-loop check) is supposed to show.
+  -->
+
+  <xacro:property name="m1" value="1.0"/>
+  <xacro:property name="m2" value="1.0"/>
+  <xacro:property name="L1" value="1.0"/>
+  <xacro:property name="L2" value="1.0"/>
+  <xacro:property name="rod_radius" value="0.02"/>
+  <xacro:property name="joint_damping1" value="0.05"/>
+  <xacro:property name="joint_damping2" value="0.05"/>
+  <xacro:property name="tau1_max" value="60.0"/>
+  <xacro:property name="tau2_max" value="30.0"/>
+  <xacro:property name="qd_max" value="50.0"/>
+
+  <material name="base_grey">
+    <color rgba="0.35 0.35 0.35 1.0"/>
+  </material>
+  <material name="link1_blue">
+    <color rgba="0.2 0.4 0.9 1.0"/>
+  </material>
+  <material name="link2_orange">
+    <color rgba="0.9 0.5 0.15 1.0"/>
+  </material>
+
+  <!-- ===================== base (fixed to world) ===================== -->
+  <link name="world"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.06" length="0.06"/></geometry>
+      <material name="base_grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.06" length="0.06"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 1.5" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ===================== macro: uniform rod link ===================== -->
+  <!-- Rod pivots about one end (the joint) and extends +Z by `length` when
+       the joint angle is 0. Inertia given about the rod's own COM (at
+       length/2), which URDF requires; the <origin> below places that COM. -->
+  <xacro:macro name="rod_link" params="name mass length radius material_name">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 ${length/2}" rpy="0 0 0"/>
+        <geometry><cylinder radius="${radius}" length="${length}"/></geometry>
+        <material name="${material_name}"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 ${length/2}" rpy="0 0 0"/>
+        <geometry><cylinder radius="${radius}" length="${length}"/></geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 ${length/2}" rpy="0 0 0"/>
+        <mass value="${mass}"/>
+        <inertia
+          ixx="${mass*(3*radius*radius+length*length)/12}" ixy="0" ixz="0"
+          iyy="${mass*(3*radius*radius+length*length)/12}" iyz="0"
+          izz="${mass*radius*radius/2}"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <xacro:rod_link name="link1" mass="${m1}" length="${L1}" radius="${rod_radius}" material_name="link1_blue"/>
+  <xacro:rod_link name="link2" mass="${m2}" length="${L2}" radius="${rod_radius}" material_name="link2_orange"/>
+
+  <!-- ===================== joints ===================== -->
+  <!-- axis=Y so the pendulum swings in the X-Z plane -->
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1000" upper="1000" effort="${tau1_max}" velocity="${qd_max}"/>
+    <dynamics damping="${joint_damping1}" friction="0.0"/>
+  </joint>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 ${L1}" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1000" upper="1000" effort="${tau2_max}" velocity="${qd_max}"/>
+    <dynamics damping="${joint_damping2}" friction="0.0"/>
+  </joint>
+
+  <!-- tip marker, purely cosmetic -->
+  <link name="tip">
+    <visual>
+      <geometry><sphere radius="0.035"/></geometry>
+      <material name="link2_orange"/>
+    </visual>
+  </link>
+  <joint name="link2_to_tip" type="fixed">
+    <parent link="link2"/>
+    <child link="tip"/>
+    <origin xyz="0 0 ${L2}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ===================== ros2_control (fully actuated MVP) ===================== -->
+  <!-- Both joints exposed as effort-controlled; matches project_plan.md
+       section 2.1 "권장 범위: 초기 MVP는 fully actuated로 시작". -->
+  <ros2_control name="double_pendulum_system" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="joint1">
+      <command_interface name="effort">
+        <param name="min">-${tau1_max}</param>
+        <param name="max">${tau1_max}</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint2">
+      <command_interface name="effort">
+        <param name="min">-${tau2_max}</param>
+        <param name="max">${tau2_max}</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find double_pendulum_control)/config/controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+
+</robot>
