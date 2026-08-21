@@ -1,0 +1,33 @@
+task_id: TOOL-001
+goal: >
+  Phase 5 (Tool Architecture) checklist has "ROS graph inspection tool" and
+  "run comparison tool" unimplemented; the other 4 items are already
+  covered by Phase 3/4 work (run_clean_experiment.sh, metrics.py,
+  wrench_disturbance.py, run_regression_suite.sh). Add the two missing
+  tools as structured, JSON-output scripts so future agent work has a
+  deterministic way to introspect the live ROS graph and compare two
+  experiment runs, instead of ad-hoc bash commands / manually eyeballing
+  two result.json files side by side.
+
+allowed_changes:
+  - double_pendulum_eval/scripts/inspect_ros_graph.py (new)
+  - double_pendulum_eval/scripts/compare_runs.py (new)
+
+forbidden_changes:
+  - double_pendulum_eval/metrics.py
+  - double_pendulum_eval/run_experiment.py
+  - any scenario acceptance criteria
+  - this specification.yaml
+
+acceptance:
+  - inspect_ros_graph.py, run against a live Gazebo+controller session,
+    outputs a structured (JSON) summary of nodes, topics, and each topic's
+    publisher/subscriber counts
+  - compare_runs.py, given two result.json paths, outputs a structured
+    diff: which metrics differ, by how much, and whether pass/fail status
+    changed between the two runs
+  - both tools work standalone (no colcon build needed, matching the
+    scripts/ convention already used by run_clean_experiment.sh etc.)
+
+regression:
+  - no existing script's behavior changes

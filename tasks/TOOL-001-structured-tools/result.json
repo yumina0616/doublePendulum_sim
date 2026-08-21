@@ -1,0 +1,20 @@
+{
+  "task_id": "TOOL-001",
+  "goal": "Add ROS graph inspection tool and run comparison tool (Phase 5 checklist gaps)",
+  "timestamp": "2026-08-21T13:45:00Z",
+  "changed_files": [
+    "double_pendulum_eval/scripts/inspect_ros_graph.py",
+    "double_pendulum_eval/scripts/compare_runs.py"
+  ],
+  "acceptance_checks": {
+    "inspect_ros_graph_structured_output": true,
+    "compare_runs_structured_diff": true,
+    "both_tools_standalone_no_build_needed": true
+  },
+  "regression_checks": {
+    "no_existing_script_behavior_changed": true
+  },
+  "verification_evidence": "evidence/inspect_ros_graph_output.json, evidence/compare_runs_output.json",
+  "passed": true,
+  "notes": "inspect_ros_graph.py verified against a live self-launched Gazebo session (agent-executed). Output revealed several duplicate /robot_state_publisher and /ros_gz_bridge node entries in the DDS graph -- accumulated orphan processes from this session's many repeated test runs, not a bug in the tool itself (cleaned up separately after verification). compare_runs.py verified against two genuinely different real result.json files on disk (a degenerate all-zero run vs a real 15s CTRL-003 diagnostic run) and produced a correct, readable per-metric delta plus a pass-status-changed flag."
+}

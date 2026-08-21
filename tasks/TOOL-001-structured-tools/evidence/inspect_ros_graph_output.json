@@ -1,0 +1,12 @@
+{
+  "note": "captured against a live self-launched Gazebo session; duplicate node entries reflect accumulated orphan processes from this session's many repeated test runs (session hygiene issue, not a tool bug) -- cleaned up afterward",
+  "topics": {
+    "/clock": {"type": "rosgraph_msgs/msg/Clock", "publishers": 23, "subscribers": 0},
+    "/joint_states": {"type": "sensor_msgs/msg/JointState", "publishers": 0, "subscribers": 12},
+    "/parameter_events": {"type": "rcl_interfaces/msg/ParameterEvent", "publishers": 36, "subscribers": 47},
+    "/robot_description": {"type": "std_msgs/msg/String", "publishers": 12, "subscribers": 0},
+    "/rosout": {"type": "rcl_interfaces/msg/Log", "publishers": 36, "subscribers": 0},
+    "/tf": {"type": "tf2_msgs/msg/TFMessage", "publishers": 12, "subscribers": 0},
+    "/tf_static": {"type": "tf2_msgs/msg/TFMessage", "publishers": 12, "subscribers": 0}
+  }
+}

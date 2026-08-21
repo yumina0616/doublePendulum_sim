@@ -1,0 +1,22 @@
+{
+  "scenario_a": "nominal_balance",
+  "scenario_b": "_diag_nominal_balance_long",
+  "controller_a": "pd",
+  "controller_b": "lqr",
+  "passed_a": true,
+  "passed_b": false,
+  "pass_status_changed": true,
+  "metrics_delta": {
+    "final_q1_deg": {"a": 0.0, "b": -0.3319706477202813, "delta": -0.3319706477202813},
+    "final_q2_deg": {"a": 0.0, "b": 1.4905645389326736, "delta": 1.4905645389326736},
+    "max_abs_tau1_nm": {"a": 0.0, "b": 60.0, "delta": 60.0},
+    "max_abs_tau2_nm": {"a": 0.0, "b": 30.0, "delta": 30.0},
+    "overshoot_q1_deg": {"a": 0.0, "b": 17.461474435520344, "delta": 17.461474435520344},
+    "overshoot_q2_deg": {"a": 0.0, "b": 17.23842901641611, "delta": 17.23842901641611},
+    "rms_error_q1_rad": {"a": 0.0, "b": 0.07901029017816597, "delta": 0.07901029017816597},
+    "rms_error_q2_rad": {"a": 0.0, "b": 0.0905586710479307, "delta": 0.0905586710479307},
+    "settling_time_q1_s": {"a": 0.006, "b": 13.555927025, "delta": 13.549927025},
+    "settling_time_q2_s": {"a": 0.006, "b": "Infinity", "delta": "Infinity"},
+    "stable": {"a": true, "b": true, "delta": 0}
+  }
+}
