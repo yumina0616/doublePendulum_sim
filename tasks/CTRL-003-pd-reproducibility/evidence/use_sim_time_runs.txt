@@ -1,0 +1,12 @@
+pd / nominal_balance, use_sim_time:=true on controller + run_experiment.py
+
+run1: overshoot_q1_deg=66.23, overshoot_q2_deg=146.69, stable=false
+run2: DEGENERATE -- all metrics 0.0, settling_time~0.006s. run_experiment.py's own
+      /joint_states recording was effectively empty (metrics.py's empty-list default
+      behavior), even though the topic was confirmed live by run_clean_experiment.sh's
+      own liveness check beforehand. Likely a /clock-vs-node-startup race specific to
+      use_sim_time; not investigated further within this task's time budget.
+
+Change reverted after this (both empty_world.sdf real_time_factor and
+run_clean_experiment.sh's use_sim_time args) -- working tree confirmed clean via
+`git diff` before committing.

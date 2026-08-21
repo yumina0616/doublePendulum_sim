@@ -1,0 +1,41 @@
+task_id: CTRL-003
+goal: >
+  Determine why identical repeated runs (same controller, same gains, same
+  scenario, controller-spawn race already fixed in CTRL-002) produce wildly
+  different physics results -- e.g. nominal_balance/impulse_disturbance with
+  PD default gains: overshoot_q1_deg observed at both 26.8 and 200.5 across
+  otherwise-identical clean runs. Root-cause and, if a genuine bug is found,
+  fix it. If the conclusion is "this is real chaotic sensitivity, not a
+  bug," that is an acceptable, documented outcome too -- this task must not
+  paper over an inconclusive result as a false "fixed."
+
+allowed_changes:
+  - double_pendulum_description/launch/empty_world.sdf
+  - double_pendulum_eval/run_experiment.py
+  - double_pendulum_eval/scripts/run_clean_experiment.sh
+  - (any file, if a concrete bug is found elsewhere -- keep changes minimal
+    and directly justified by evidence gathered in this task)
+
+forbidden_changes:
+  - acceptance criteria in any scenario file (no loosening bounds to make
+    variance "not matter")
+  - double_pendulum_eval/metrics.py's calculation logic (the test oracle)
+  - this specification.yaml
+
+acceptance:
+  - at least 3 repeated runs of the same scenario+controller+gains, with
+    quantitative results (not just 2 anecdotal data points) characterizing
+    the actual variance
+  - a specific, evidence-backed root-cause determination: (a) wall-clock
+    real-time-factor pacing jitter interacting with the fixed-rate control
+    timer, (b) genuine chaotic sensitivity to sub-millisecond timing
+    differences in a nonlinear coupled system, (c) a Gazebo/DART physics
+    solver non-determinism, or (d) something else found along the way
+  - if (a) or (d) turns out to be a fixable bug, a fix + before/after
+    comparison; if (b) or (c), a written explanation of why it's not
+    fixable at this layer and what that implies for how "PASS" should be
+    interpreted going forward
+
+regression:
+  - run_clean_experiment.sh and run_regression_suite.sh must still work
+    (CTRL-001, CTRL-002 acceptance criteria still hold)

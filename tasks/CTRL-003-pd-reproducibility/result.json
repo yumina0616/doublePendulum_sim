@@ -1,0 +1,26 @@
+{
+  "task_id": "CTRL-003",
+  "goal": "Root-cause why identical repeated runs produce wildly different physics results",
+  "timestamp": "2026-08-21T04:30:00Z",
+  "changed_files": [],
+  "baseline_data_wall_clock": [
+    {"run": 1, "overshoot_q1_deg": 200.49, "overshoot_q2_deg": 154.82, "stable": false},
+    {"run": 2, "overshoot_q1_deg": 26.78, "overshoot_q2_deg": 23.70, "stable": true},
+    {"run": 3, "overshoot_q1_deg": 63.93, "overshoot_q2_deg": 206.33, "stable": false}
+  ],
+  "hypothesis_1_tested": {
+    "change": "real_time_factor: 1.0 -> 0 (unthrottled) in empty_world.sdf",
+    "outcome": "REJECTED -- did not test the hypothesis cleanly. Broke controller_manager entirely: joint_state_broadcaster's configure_controller service call timed out repeatedly, no /joint_states data within 60s. Reverted."
+  },
+  "hypothesis_2_tested": {
+    "change": "use_sim_time:=true on controller_node.py, lqr_node.py, run_experiment.py",
+    "outcome": "REJECTED -- did not test the hypothesis cleanly either. Run 1 completed with plausible (if still large) variance (overshoot 66.2/146.7 deg). Run 2 produced a degenerate all-zero result (metrics.py's empty-list defaults), meaning run_experiment.py's own /joint_states recording was effectively empty despite the topic genuinely publishing (confirmed separately via run_clean_experiment.sh's own liveness check) -- likely a /clock-vs-node-startup race specific to use_sim_time, not investigated further. Reverted."
+  },
+  "acceptance_checks": {
+    "at_least_3_repeated_runs_with_quantitative_data": true,
+    "specific_evidence_backed_root_cause_determined": false,
+    "fix_applied_or_non_fixability_explained": "partially -- two candidate mechanisms tested and ruled out as clean explanations; true root cause NOT isolated"
+  },
+  "passed": false,
+  "notes": "Honest inconclusive result, not a false 'fixed'. Confirmed: (1) the variance is real and substantial (not a fluke of one bad run), (2) it is NOT solely explained by the controller-spawn race (already fixed in CTRL-002, still present after), (3) it is NOT cleanly explained-or-fixed by either real_time_factor or use_sim_time changes -- both introduced their own new failure modes instead. Remaining candidate explanations, untested: genuine chaotic sensitivity to sub-millisecond timing in a nonlinear coupled system near a stability boundary; Gazebo/DART physics solver non-determinism unrelated to ROS-side timing. Recommend: either accept single-run PASS/FAIL as inherently noisy for large-disturbance scenarios and require multiple repeated runs before trusting a result (statistical acceptance rather than single-shot), or invest further dedicated time specifically in Gazebo/DART determinism research before trusting any single verification run in Phase 5+."
+}

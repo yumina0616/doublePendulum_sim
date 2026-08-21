@@ -1,0 +1,5 @@
+pd / nominal_balance, 3 runs, real_time_factor=1.0 (default), wall-clock timing (default)
+
+run1 (from CTRL-002 verification): overshoot_q1_deg=200.49, overshoot_q2_deg=154.82, stable=false
+run2 (from CTRL-002 verification): overshoot_q1_deg=26.78,  overshoot_q2_deg=23.70,  stable=true
+run3 (self-executed CTRL-003):     overshoot_q1_deg=63.93,  overshoot_q2_deg=206.33, stable=false, final_q1=45.19deg, final_q2=-31.40deg
