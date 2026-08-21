@@ -1,0 +1,34 @@
+task_id: CTRL-004
+goal: >
+  CTRL-003 confirmed real, substantial run-to-run physics variance in
+  identical scenarios (PD/nominal_balance overshoot_q1_deg observed at
+  200.5, 26.8, 63.9 across 3 clean runs) and could not isolate a root
+  cause after testing two candidate mechanisms. Rather than continue an
+  open-ended investigation, add a statistical acceptance mode: run a
+  scenario N times and require a pass RATE (not a single pass) before
+  declaring a controller/gain configuration acceptable. This does not fix
+  the underlying variance -- it makes the verifier honest about it instead
+  of silently trusting one lucky or unlucky run.
+
+allowed_changes:
+  - double_pendulum_eval/scripts/run_repeated_experiment.sh (new)
+
+forbidden_changes:
+  - double_pendulum_eval/metrics.py
+  - double_pendulum_eval/run_experiment.py
+  - any scenario's acceptance criteria (per-run bounds stay exactly as-is;
+    only how many runs must clear them is new)
+  - this specification.yaml
+
+acceptance:
+  - a new script runs the same controller+scenario N times (N configurable,
+    default 5) via run_clean_experiment.sh
+  - reports individual pass/fail per run, overall pass_rate, and a final
+    verdict against a configurable threshold (default: >=60% of runs pass)
+  - writes a machine-readable summary (JSON) alongside the existing
+    per-run result.json files
+  - demonstrated end-to-end against a real (already known non-reproducible)
+    case: pd / nominal_balance
+
+regression:
+  - run_clean_experiment.sh and run_regression_suite.sh behavior unchanged

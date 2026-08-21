@@ -45,6 +45,9 @@ sleep 2
 echo "[2/4] Launching a fresh Gazebo simulation (headless:=$HEADLESS)..."
 ros2 launch double_pendulum_description spawn.launch.py headless:="$HEADLESS" > /tmp/gz_launch.log 2>&1 &
 GZ_PID=$!
+sleep 5  # let the graph settle before subscribing -- `ros2 topic echo --once`
+         # called immediately after launch can race DDS discovery and hang
+         # the full 60s even though the topic starts flowing a few seconds in
 
 echo "  waiting for /joint_states to actually publish data (topic existing isn't enough --"
 echo "  GUI mode in particular can take a while past that before physics/bridge is really live)..."

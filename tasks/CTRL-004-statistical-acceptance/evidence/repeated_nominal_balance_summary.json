@@ -1,0 +1,10 @@
+{
+  "controller": "pd",
+  "scenario": "nominal_balance",
+  "n_runs": 5,
+  "n_passed": 0,
+  "pass_rate": 0.0,
+  "threshold": 0.6,
+  "verdict": "FAIL",
+  "runs": [{"run": 1, "passed": false, "exit_code": 1},{"run": 2, "passed": false, "exit_code": 1},{"run": 3, "passed": false, "exit_code": 1},{"run": 4, "passed": false, "exit_code": 1},{"run": 5, "passed": false, "exit_code": 1}]
+}
