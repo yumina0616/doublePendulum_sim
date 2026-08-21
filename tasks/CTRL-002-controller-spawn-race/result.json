@@ -1,0 +1,18 @@
+{
+  "task_id": "CTRL-002",
+  "goal": "Fix joint_state_broadcaster/effort_controller spawn race in spawn.launch.py",
+  "timestamp": "2026-08-21T04:00:00Z",
+  "changed_files": [
+    "double_pendulum_description/launch/spawn.launch.py"
+  ],
+  "acceptance_checks": {
+    "controllers_load_sequentially": true,
+    "no_configure_controller_timeout_across_repeated_runs": true
+  },
+  "regression_checks": {
+    "joint_states_and_effort_topic_still_come_up": true
+  },
+  "verification_evidence": "evidence/run1.txt, evidence/run2.txt (both clean controller loads, user-run in real Gazebo)",
+  "passed": true,
+  "notes": "Confirmed real bug, confirmed fixed. Explicitly did NOT fix PD's separate physics non-reproducibility (overshoot 200.5deg vs 26.8deg across the same two verification runs, both with clean controller loads) -- that remains a distinct open item, likely genuine chaotic sensitivity or Gazebo physics non-determinism rather than a spawn-order bug."
+}

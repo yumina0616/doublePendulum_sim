@@ -108,12 +108,23 @@ def generate_launch_description():
         output="screen",
     )
 
-    # load controllers only after the entity (and its in-process
-    # controller_manager, started by the gz_ros2_control plugin) exists
-    delayed_controllers = RegisterEventHandler(
+    # Load controllers only after the entity (and its in-process
+    # controller_manager, started by the gz_ros2_control plugin) exists --
+    # and load joint_state_broadcaster THEN effort_controller, not both at
+    # once: launching both spawners simultaneously races two concurrent
+    # configure_controller service calls against the same controller_manager,
+    # which can make joint_state_broadcaster's calls time out and die (seen
+    # in practice, not just theoretical -- see private/roadmap.md CTRL-002).
+    load_joint_state_broadcaster = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=spawn_entity,
-            on_exit=[joint_state_broadcaster_spawner, effort_controller_spawner],
+            on_exit=[joint_state_broadcaster_spawner],
+        )
+    )
+    load_effort_controller = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[effort_controller_spawner],
         )
     )
 
@@ -125,6 +136,7 @@ def generate_launch_description():
             clock_bridge,
             robot_state_publisher,
             spawn_entity,
-            delayed_controllers,
+            load_joint_state_broadcaster,
+            load_effort_controller,
         ]
     )

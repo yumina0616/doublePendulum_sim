@@ -1,0 +1,4 @@
+[3/4] Starting pd controller...
+[4/4] Running experiment: nominal_balance
+(no configure_controller timeout; controllers loaded cleanly)
+Result: FAIL on physics acceptance (overshoot_q1_deg=200.49, settling inf) -- infra was clean, physics result is the separate open item.

@@ -1,0 +1,4 @@
+[3/4] Starting pd controller...
+[4/4] Running experiment: nominal_balance
+(no configure_controller timeout; controllers loaded cleanly)
+Result: FAIL on settling time only (overshoot_q1_deg=26.78, overshoot_q2_deg=23.70, stable=true) -- much milder than run1 despite identical setup, infra was clean both times.

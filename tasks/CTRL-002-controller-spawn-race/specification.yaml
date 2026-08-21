@@ -1,0 +1,27 @@
+task_id: CTRL-002
+goal: >
+  Fix a race condition where joint_state_broadcaster and effort_controller
+  are spawned simultaneously in spawn.launch.py, which can make
+  joint_state_broadcaster's configure_controller service call time out and
+  the spawner process die -- discovered live while investigating why PD's
+  impulse_disturbance results were not run-to-run reproducible.
+
+allowed_changes:
+  - double_pendulum_description/launch/spawn.launch.py
+
+forbidden_changes:
+  - double_pendulum_eval/**
+  - double_pendulum_control/**
+  - acceptance criteria in any scenario file
+  - this specification.yaml
+
+acceptance:
+  - joint_state_broadcaster and effort_controller are loaded sequentially,
+    not concurrently
+  - run_clean_experiment.sh completes the controller-loading step cleanly
+    (no "Failed getting a result from calling
+    /controller_manager/configure_controller" errors) across repeated runs
+
+regression:
+  - spawn.launch.py must still bring up /joint_states and
+    /effort_controller/commands successfully (Phase 1 baseline)
