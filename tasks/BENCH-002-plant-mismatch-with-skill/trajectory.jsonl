@@ -1,0 +1,6 @@
+{"step": 1, "action": "write_specification", "file": "specification.yaml"}
+{"step": 2, "action": "write_plan", "file": "PLAN.md"}
+{"step": 3, "action": "apply_skill_procedure", "file": "double_pendulum_control/linear_model.py", "change": "PendulumParams.m2: 1.0 -> 1.4 (regenerate linear model to match BENCH-001's mismatched plant)", "note": "no change needed to lqr_controller.py -- design_lqr() re-linearizes and re-solves the CARE equation from linear_model.py's params every time lqr_node.py starts"}
+{"step": 4, "action": "run_benchmark", "command": "run_repeated_experiment.sh lqr nominal_balance 3 0.6", "result": "0/3 passed, pass_rate=0.0, verdict=FAIL -- nearly identical to BENCH-001's baseline numbers, including the run-3 catastrophic instability"}
+{"step": 5, "action": "compare_to_baseline", "note": "pass_rate 0.0 vs 0.0 -- no improvement"}
+{"step": 6, "action": "outcome", "result": "candidate does not beat baseline", "note": "fed to harness/promote_skill.py as the candidate-eval summary; expected decision is REJECT, not a forced promotion"}

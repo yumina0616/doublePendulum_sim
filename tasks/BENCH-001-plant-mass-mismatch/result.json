@@ -1,0 +1,21 @@
+{
+  "task_id": "BENCH-001",
+  "goal": "Reproduce project_plan.md section 11.1's plant/controller-model mismatch failure pattern with real Gazebo physics: link2 mass changed in the xacro, controller's linear model NOT regenerated.",
+  "timestamp": "2026-08-21T15:11:00Z",
+  "changed_files": ["double_pendulum_description/urdf/double_pendulum.urdf.xacro (m2: 1.0 -> 1.4)"],
+  "verification_run": {
+    "controller": "lqr",
+    "scenario": "nominal_balance",
+    "n_runs": 3,
+    "n_passed": 0,
+    "pass_rate": 0.0,
+    "threshold": 0.6,
+    "verdict": "FAIL",
+    "notable": "run 3/3 was not just a threshold miss: stable=false, overshoot_q1_deg=223.7, overshoot_q2_deg=83.7, both actuators saturated at their torque limits (60.0/30.0 Nm) -- a qualitatively different, more severe failure than a borderline settling-time miss."
+  },
+  "control_comparison": {
+    "note": "A same-session matched-plant (m1=m2=L1=L2=1.0, no mismatch) LQR/nominal_balance N=3 control was also run (see BENCH-... evidence / HARNESS-001 result.json) and ALSO failed 0/3 -- but with no catastrophic instability in any run (max torque ~22/9 Nm, no saturation). This isolates the mismatch's real effect: it doesn't cause 'more failures' by the pass/fail threshold (both are already 0/3 due to a separate, pre-existing settling-time issue -- see CTRL-003), but it does introduce a distinct, more severe failure mode (torque saturation + real instability) not seen in the matched control."
+  },
+  "passed": false,
+  "notes": "This is a deliberate, controlled failure used as evidence for HARNESS-001's failure store -- not a bug in this task. The plant/model mismatch is real and physically meaningful (see control_comparison), which is the point: it's genuine evidence for the 'plant-model-inconsistency' skill category, not a fabricated scenario."
+}

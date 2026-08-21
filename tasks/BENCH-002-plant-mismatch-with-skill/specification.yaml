@@ -1,0 +1,29 @@
+task_id: BENCH-002
+goal: >
+  Same plant mismatch as BENCH-001 (link2 mass 1.4 kg), but this time apply
+  the proposed skill's procedure (SKILL-CONTROL-MODEL-CONSISTENCY):
+  regenerate the controller's linear model to match the new plant, then
+  recompute the LQR gain, then re-run. This is the "Harness + Candidate"
+  arm of the regression-gated promotion comparison (project_plan.md
+  section 12) against BENCH-001's baseline.
+
+allowed_changes:
+  - double_pendulum_control/linear_model.py (PendulumParams m2 default:
+    1.0 -> 1.4, matching the xacro left over from BENCH-001)
+
+forbidden_changes:
+  - double_pendulum_description/urdf/double_pendulum.urdf.xacro (already
+    at m2=1.4 from BENCH-001, left as-is here)
+  - lqr_controller.py (design_lqr already re-derives A/B from
+    linear_model.py's params every time it's called -- no change needed
+    there for the gain to update, only the plant model itself)
+  - this specification.yaml
+
+acceptance:
+  - run_repeated_experiment.sh lqr nominal_balance 3 0.6 executed with the
+    controller model matching the true (mismatched) plant
+  - result recorded as a genuine pass_rate, compared against BENCH-001's
+
+regression:
+  - not applicable -- both files reverted to their real defaults
+    (m1=m2=L1=L2=1.0) by HARNESS-001 immediately after this task's run

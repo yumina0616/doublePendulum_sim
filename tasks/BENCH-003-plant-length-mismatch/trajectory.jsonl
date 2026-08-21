@@ -1,0 +1,6 @@
+{"step": 1, "action": "write_specification", "file": "specification.yaml"}
+{"step": 2, "action": "write_plan", "file": "PLAN.md"}
+{"step": 3, "action": "introduce_mismatch", "file": "double_pendulum_description/urdf/double_pendulum.urdf.xacro", "change": "L1: 1.0 -> 1.3", "note": "linear_model.py deliberately left untouched"}
+{"step": 4, "action": "run_benchmark", "command": "run_repeated_experiment.sh lqr nominal_balance 3 0.6", "result": "0/3 passed, pass_rate=0.0, verdict=FAIL. Run 3 catastrophic: overshoot 539.1/282.3 deg, zero effective torque (different signature than BENCH-001's torque-saturated instability)"}
+{"step": 5, "action": "revert", "file": "double_pendulum_description/urdf/double_pendulum.urdf.xacro", "change": "L1: 1.3 -> 1.0", "verified": "git diff clean"}
+{"step": 6, "action": "outcome", "result": "evidence recorded", "note": "second independent plant-model-inconsistency instance, feeds harness/propose_skill.py's min_evidence=2 threshold together with BENCH-001"}

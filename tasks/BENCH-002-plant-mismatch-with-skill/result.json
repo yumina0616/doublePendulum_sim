@@ -1,0 +1,23 @@
+{
+  "task_id": "BENCH-002",
+  "goal": "Apply SKILL-CONTROL-MODEL-CONSISTENCY's procedure (regenerate the controller's linear model to match the changed plant) to BENCH-001's mismatch, and compare against BENCH-001 as the regression gate for promotion.",
+  "timestamp": "2026-08-21T15:15:00Z",
+  "changed_files": ["double_pendulum_control/linear_model.py (PendulumParams.m2: 1.0 -> 1.4)"],
+  "verification_run": {
+    "controller": "lqr",
+    "scenario": "nominal_balance",
+    "n_runs": 3,
+    "n_passed": 0,
+    "pass_rate": 0.0,
+    "threshold": 0.6,
+    "verdict": "FAIL",
+    "notable": "Nearly identical to BENCH-001's baseline, including run 3: stable=false, overshoot_q1_deg=223.6 (vs 223.7 baseline), overshoot_q2_deg=83.6 (vs 83.7 baseline), same torque saturation. Regenerating the model with the corrected mass did NOT measurably prevent the catastrophic instability in this 3-run sample."
+  },
+  "comparison_vs_baseline": {
+    "baseline_pass_rate": 0.0,
+    "candidate_pass_rate": 0.0,
+    "verdict": "no improvement -- candidate did not beat baseline"
+  },
+  "passed": true,
+  "notes": "Marked passed=true as a TASK (it correctly executed the skill's procedure and produced a real, honestly-recorded comparison) even though the underlying control result did not improve. The scenario's own outcome (did the skill help?) is 'no' -- recorded honestly in comparison_vs_baseline and fed to harness/promote_skill.py, which must REJECT rather than force a promotion. Possible explanations, not distinguished by this sample: (1) N=3 is too small to detect a real but partial improvement given known run-to-run variance (CTRL-003), (2) a 40% mass increase combined with this scenario's 15 N*m disturbance drives actuator saturation regardless of the (still LQI, same Q/R weights) gain correction -- the mismatch may need a larger control authority (higher Q, higher torque limits) rather than just a corrected model, (3) the specific catastrophic trajectory is dominated by disturbance-timing sensitivity (already documented as unresolved in CTRL-003) more than by the plant model per se. Not investigated further here -- out of scope for HARNESS-001, which is about building and correctly gating the pipeline, not about actually solving the underactuated tuning problem."
+}

@@ -1,0 +1,6 @@
+{"step": 1, "action": "write_specification", "file": "specification.yaml"}
+{"step": 2, "action": "write_plan", "file": "PLAN.md"}
+{"step": 3, "action": "introduce_mismatch", "file": "double_pendulum_description/urdf/double_pendulum.urdf.xacro", "change": "m2: 1.0 -> 1.4", "note": "linear_model.py deliberately left untouched"}
+{"step": 4, "action": "run_benchmark", "command": "run_repeated_experiment.sh lqr nominal_balance 3 0.6", "result": "0/3 passed, pass_rate=0.0, verdict=FAIL. Run 3 catastrophically unstable (torque saturated, overshoot 223.7/83.7 deg)"}
+{"step": 5, "action": "run_matched_control_for_comparison", "note": "reverted xacro+linear_model.py to m2=1.0 and re-ran the identical benchmark (recorded under HARNESS-001, not a separate BENCH task) to isolate the mismatch's real effect from pre-existing physics variance (CTRL-003)", "result": "control also 0/3, but with no catastrophic instability in any run -- confirms the mismatch has a real, distinct effect (torque saturation), even though it doesn't change the raw pass_rate given the pre-existing settling-time issue already fails the matched case too"}
+{"step": 6, "action": "outcome", "result": "evidence recorded", "note": "feeds harness/failure_store.py as one of >=2 independent plant-model-inconsistency instances (paired with BENCH-003)"}

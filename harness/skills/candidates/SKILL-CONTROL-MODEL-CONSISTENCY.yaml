@@ -1,0 +1,35 @@
+id: SKILL-CONTROL-MODEL-CONSISTENCY
+
+trigger:
+  changed_files:
+    - "*.urdf"
+    - "*.xacro"
+    - "*model_params*"
+
+procedure:
+  - detect plant parameter change
+  - regenerate linear model (linear_model.py's PendulumParams)
+  - recompute controller gain (lqr_controller.py design_lqr)
+  - run nominal simulation
+  - run regression evaluation
+
+reason: >
+  Controller matrices (LQR K, PD gains if re-tuned) depend on the plant's mass/length parameters through the linearized model. Changing the plant definition without regenerating that model leaves the controller acting on a stale, now-incorrect physical model.
+
+evidence:
+  - BENCH-001
+  - BENCH-003
+
+status: candidate
+created_from:
+  - BENCH-001
+  - BENCH-003
+created_at: 2026-08-21
+last_verified: None
+activation_count: 0
+success_after_activation: 0
+negative_regression_count: 0
+
+last_evaluation_decision: REJECT
+last_evaluation_reason: "candidate pass_rate 0.0 did not beat baseline pass_rate 0.0"
+last_evaluated_at: 2026-08-21

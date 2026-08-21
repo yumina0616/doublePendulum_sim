@@ -1,0 +1,26 @@
+task_id: BENCH-001
+goal: >
+  Intentionally reproduce project_plan.md section 11.1's worked example: a
+  plant parameter change (link2 mass) that is NOT followed by regenerating
+  the controller's internal linear model, evaluated against real Gazebo
+  physics. This is Harness benchmark data feeding HARNESS-001's failure
+  store -- not a bug being fixed, a controlled failure being recorded as
+  evidence.
+
+allowed_changes:
+  - double_pendulum_description/urdf/double_pendulum.urdf.xacro (m2: 1.0 -> 1.4)
+
+forbidden_changes:
+  - double_pendulum_control/linear_model.py (must stay at its default
+    m2=1.0 for this task -- that is the point: the mismatch is deliberate)
+  - double_pendulum_control/lqr_controller.py
+  - this specification.yaml
+
+acceptance:
+  - run_repeated_experiment.sh lqr nominal_balance 3 0.6 executed against
+    the mismatched plant (m2=1.4, controller model still assumes m2=1.0)
+  - result recorded as a genuine (not fabricated) pass_rate, whatever it is
+
+regression:
+  - not applicable -- this task deliberately introduces a physical mismatch
+    and is reverted by HARNESS-001 immediately after data collection

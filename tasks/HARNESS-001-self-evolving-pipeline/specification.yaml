@@ -1,0 +1,63 @@
+task_id: HARNESS-001
+goal: >
+  Build Phase 6 of the project plan (Self-Evolving Harness): a pipeline that
+  stores failures from completed tasks, categorizes them by common root
+  cause, proposes a reusable engineering skill when a pattern repeats,
+  evaluates the candidate skill via a regression gate (baseline vs
+  candidate), and promotes or rejects it -- never auto-activating a skill
+  without evidence. Demonstrated end-to-end using project_plan.md section
+  11.1's own worked example: a plant-parameter change (URDF mass/length)
+  that isn't followed by a controller model regeneration.
+
+allowed_changes:
+  - harness/failure_store.py (new)
+  - harness/categorize_failures.py (new)
+  - harness/propose_skill.py (new)
+  - harness/promote_skill.py (new)
+  - harness/skills/candidates/ (new, generated)
+  - harness/skills/active/ (new, generated)
+  - tasks/BENCH-001-plant-mass-mismatch/ (new benchmark task)
+  - tasks/BENCH-002-plant-mismatch-with-skill/ (new benchmark task)
+  - double_pendulum_description/urdf/double_pendulum.urdf.xacro (temporary,
+    reverted to m1=m2=L1=L2=1.0 before this task ends)
+  - double_pendulum_control/linear_model.py (temporary during the
+    candidate-eval benchmark, reverted before this task ends)
+
+forbidden_changes:
+  - this specification.yaml
+  - leaving double_pendulum.urdf.xacro or linear_model.py in a
+    non-default (mismatched) state after the task completes -- the
+    project's actual double pendulum must stay m1=m2=L1=L2=1.0
+
+acceptance:
+  - harness/failure_store.py scans tasks/*/result.json for passed=false
+    and writes structured records (task_id, changed_files, summary) to
+    harness/failure_store.jsonl
+  - harness/categorize_failures.py groups failure records by a rule
+    (plant-definition file changed without a corresponding controller
+    model file change in the same task) into harness/failure_categories.json
+  - harness/propose_skill.py generates a skill candidate YAML (id,
+    trigger, procedure, reason, evidence) matching project_plan.md
+    section 11.1's schema once a category has >= 2 pieces of evidence,
+    written under harness/skills/candidates/
+  - two real benchmark tasks are run against actual Gazebo physics (not
+    fabricated data): one with a plant/controller-model mismatch (expected
+    to fail or measurably degrade), one with the same plant change but the
+    skill's procedure applied (controller model regenerated) -- both using
+    CTRL-004's run_repeated_experiment.sh for statistically honest
+    pass rates given known run-to-run variance
+  - harness/promote_skill.py compares the two benchmark results against a
+    simple promotion gate (candidate pass_rate strictly better than
+    baseline, informed by project_plan.md section 12) and moves the skill
+    from candidates/ to active/ only if it passes, writing skill metadata
+    (status, created_from, activation_count, last_verified) per section 13
+  - if the candidate fails the gate, the pipeline must say REJECT, not
+    force a promotion
+
+regression:
+  - existing tasks/CTRL-*/TOOL-*/ artifacts and scripts (run_clean_experiment.sh,
+    run_repeated_experiment.sh, run_regression_suite.sh) unchanged and still
+    working
+  - project's real double pendulum definition (xacro + linear_model.py)
+    identical to its pre-task state once this task's evidence-gathering is
+    done (verified via git diff)

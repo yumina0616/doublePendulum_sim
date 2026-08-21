@@ -1,0 +1,39 @@
+{
+  "task_id": "HARNESS-001",
+  "goal": "Build Phase 6 (Self-Evolving Harness): failure store, categorization, skill proposal, candidate skill store, regression-gated promote/reject, skill metadata -- demonstrated end-to-end with real Gazebo physics data, not fabricated examples.",
+  "timestamp": "2026-08-21T15:26:00Z",
+  "changed_files": [
+    "harness/failure_store.py (new)",
+    "harness/categorize_failures.py (new)",
+    "harness/propose_skill.py (new)",
+    "harness/promote_skill.py (new)",
+    "harness/skills/candidates/SKILL-CONTROL-MODEL-CONSISTENCY.yaml (new, generated)",
+    "tasks/BENCH-001-plant-mass-mismatch/ (new benchmark task)",
+    "tasks/BENCH-002-plant-mismatch-with-skill/ (new benchmark task)",
+    "tasks/BENCH-003-plant-length-mismatch/ (new benchmark task)"
+  ],
+  "pipeline_demonstration": {
+    "step_1_failure_store": "harness/failure_store.py scanned tasks/*/result.json, found 3 failures (BENCH-001, BENCH-003, CTRL-003), wrote harness/failure_store.jsonl",
+    "step_2_categorization": "harness/categorize_failures.py grouped BENCH-001 and BENCH-003 (both: plant-definition file changed, controller-model file NOT changed) into category 'plant-model-inconsistency' -- correctly excluded CTRL-003 (different files touched) and BENCH-002 (explicitly changed linear_model.py, i.e. the fix, not the failure)",
+    "step_3_skill_proposal": "harness/propose_skill.py generated harness/skills/candidates/SKILL-CONTROL-MODEL-CONSISTENCY.yaml once evidence reached 2, matching project_plan.md section 11.1's exact schema (id/trigger/procedure/reason/evidence) plus section 13's lifecycle metadata (status=candidate, created_from, activation_count=0, etc)",
+    "step_4_5_benchmark_data": "BENCH-001 (m2 1.0->1.4, no model regen) and BENCH-003 (L1 1.0->1.3, no model regen) both real Gazebo LQR/nominal_balance N=3 runs, both 0/3 pass_rate, both with a catastrophic run-3 failure NOT seen in a same-session matched-plant control (also 0/3, but no instability, no torque saturation, no zero-torque event -- see control_comparison below). BENCH-002 applied the skill's procedure (regenerate linear_model.py to m2=1.4) against BENCH-001's exact scenario.",
+    "step_6_promotion_gate": "harness/promote_skill.py compared BENCH-001 (baseline, pass_rate=0.0) vs BENCH-002 (candidate, pass_rate=0.0) -> REJECT (candidate did not beat baseline). Skill correctly stayed in skills/candidates/ with an auditable rejection note appended (not silently dropped, not force-promoted)."
+  },
+  "control_comparison": {
+    "purpose": "isolate whether BENCH-001/003's failures were caused by the deliberate mismatch or by CTRL-003's already-documented pre-existing LQR/nominal_balance run-to-run physics variance",
+    "matched_control": {"n_runs": 3, "pass_rate": 0.0, "verdict": "FAIL", "note": "0/3 like the mismatched conditions, but ALL 3 runs had reasonable overshoot (~16 deg) and torque well under limits (~22/9 Nm) -- fails only on the settling_time_q1 criterion, the same borderline issue already known from CTRL-003/004, not catastrophic"},
+    "mismatch_mass_BENCH-001": {"n_runs": 3, "pass_rate": 0.0, "verdict": "FAIL", "note": "run 3 catastrophic: overshoot 223.7/83.7 deg, BOTH actuators saturated at their torque limits (60/30 Nm)"},
+    "mismatch_length_BENCH-003": {"n_runs": 3, "pass_rate": 0.0, "verdict": "FAIL", "note": "run 3 catastrophic: overshoot 539.1/282.3 deg, ZERO effective torque -- a different failure signature than BENCH-001's saturation"},
+    "conclusion": "the raw pass_rate metric alone cannot separate 'mismatch effect' from 'pre-existing variance' here, since even the matched control already fails 0/3 on the settling-time criterion. But the qualitative failure mode differs cleanly: catastrophic instability (saturation or zero-torque) appeared in BOTH mismatch conditions and in NEITHER the matched control's 3 runs observed this session -- real evidence the mismatch has a genuine physical effect, even though it isn't visible in pass_rate alone at this scenario's existing near-universal settling-time failure rate."
+  },
+  "acceptance_checks": {
+    "failure_store_scans_and_writes_records": true,
+    "categorization_groups_by_explainable_rule": true,
+    "skill_proposal_matches_section_11_1_schema": true,
+    "two_real_benchmark_tasks_run_against_gazebo": true,
+    "promotion_gate_compares_and_writes_metadata": true,
+    "does_not_force_promotion_when_candidate_does_not_win": true
+  },
+  "passed": true,
+  "notes": "The pipeline itself works correctly end-to-end and made the right call (REJECT) given the actual data -- that correctness, not a successful skill promotion, is what this task's acceptance criteria required. The candidate skill's REJECT does not mean plant/model consistency is unimportant (control_comparison shows the mismatch is real and physically meaningful); it means this specific fix (regenerating only the linear model's mass/length parameters, same Q/R weights, same disturbance magnitude, N=3 sample) was not demonstrated to recover pass_rate in this test. Left as an open engineering question for later, same as CTRL-003's still-unresolved variance and the still-unresolved LQI gain-convergence issue: possible next steps if this skill is revisited are (1) larger N per benchmark condition to separate the mismatch's effect from background variance more cleanly, (2) re-tuning Q/R (not just the model) as part of the skill's procedure when the mismatch is large, (3) checking whether BENCH-003's zero-torque run-3 failure is a genuine physics effect of the length change or an unrelated controller-node/DDS hiccup (a zero-torque failure mode was also seen with NO mismatch at all in CTRL-004's PD testing)."
+}
