@@ -1,0 +1,9 @@
+==================================================================
+Regression suite summary (controller=pd)
+==================================================================
+  impulse_disturbance       FAIL (exit 1)
+  initial_angle_small       FAIL (exit 1)
+  nominal_balance           FAIL (exit 1)
+
+SOME SCENARIOS FAILED
+Summary written to /tmp/regression_summary.json

@@ -1,0 +1,20 @@
+{
+  "task_id": "CTRL-001",
+  "goal": "Add a machine-readable suite-level summary.json to run_regression_suite.sh",
+  "timestamp": "2026-08-21T03:44:19Z",
+  "changed_files": [
+    "double_pendulum_eval/scripts/run_regression_suite.sh"
+  ],
+  "acceptance_checks": {
+    "summary_json_written": true,
+    "summary_json_has_expected_fields": true,
+    "exit_code_semantics_unchanged": true,
+    "stdout_table_unchanged": true
+  },
+  "regression_checks": {
+    "run_regression_suite.sh_pd_runs_all_3_scenarios": true
+  },
+  "verification_evidence": "evidence/regression_summary.json, evidence/stdout_excerpt.txt",
+  "passed": true,
+  "notes": "Verified live by the user in real Gazebo (not offline-only). Incidentally, this same run surfaced that PD's response to impulse_disturbance is not run-to-run reproducible near large disturbances (overshoot 23.8deg->PASS in an earlier run vs 412deg->catastrophic FAIL here, same gains) -- noted in private/roadmap.md as a separate open finding, out of scope for this task."
+}

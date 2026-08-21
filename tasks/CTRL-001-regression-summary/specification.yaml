@@ -1,0 +1,29 @@
+task_id: CTRL-001
+goal: >
+  run_regression_suite.sh currently only prints a human-readable pass/fail
+  table to stdout. Add a machine-readable suite-level summary.json so
+  future automation (CI, or a future coding-agent task) can check overall
+  pass/fail without parsing terminal output.
+
+allowed_changes:
+  - double_pendulum_eval/scripts/run_regression_suite.sh
+
+forbidden_changes:
+  - double_pendulum_eval/scenarios/**
+  - double_pendulum_eval/metrics.py
+  - double_pendulum_eval/run_experiment.py
+  - acceptance criteria in any scenario file
+  - this specification.yaml
+
+acceptance:
+  - a summary JSON file is written after every full suite run (path
+    controllable via --output, default /tmp/regression_summary.json)
+  - it contains: controller, timestamp, per-scenario pass/fail, and an
+    overall_pass boolean
+  - exit code semantics unchanged (0 iff every scenario passed)
+  - existing stdout table output unchanged (no output regression)
+
+regression:
+  - "run_regression_suite.sh pd" must still execute all 3 scenarios
+    (nominal_balance, initial_angle_small, impulse_disturbance) and print
+    the same summary table format as before

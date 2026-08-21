@@ -1,0 +1,6 @@
+{
+  "controller": "pd",
+  "timestamp": "2026-08-21T03:44:19Z",
+  "scenarios": {"impulse_disturbance": false,"initial_angle_small": false,"nominal_balance": false},
+  "overall_pass": false
+}
