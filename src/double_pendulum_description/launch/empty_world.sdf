@@ -11,6 +11,14 @@
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <!-- Lets us inject a genuine external push (force/torque applied
+         directly to a link) on /world/<world>/wrench, independent of the
+         ros2_control command topic -- see double_pendulum_eval/scripts/
+         wrench_disturbance.py. This replaces the old approach of racing
+         disturbance.py against the controller on /effort_controller/commands,
+         which briefly blacked out the controller entirely instead of letting
+         it keep resisting a push like a real disturbance would. -->
+    <plugin filename="gz-sim-apply-link-wrench-system" name="gz::sim::systems::ApplyLinkWrench"/>
     <!-- No Sensors plugin: this plant has no cameras/depth sensors, and the
          Ogre2 render engine it would initialize segfaults on this machine's
          Intel iGPU driver under WSLg (see private/기획서 notes). -->

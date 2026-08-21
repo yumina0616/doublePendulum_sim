@@ -1,0 +1,24 @@
+name: _diag_nominal_balance_long
+description: >
+  DIAGNOSTIC ONLY, not a real regression scenario -- same as nominal_balance
+  but with a much longer recording window, to check whether LQI is slowly
+  converging (just needs more time) or genuinely stuck at a steady offset.
+  Delete once the LQI settling-time question is resolved.
+
+disturbance:
+  link: link1
+  torque_y: 15.0
+  pulse_duration: 0.3
+
+settle_time_before_s: 1.0
+total_duration_s: 15.0
+settle_band_deg: 1.0
+
+acceptance:
+  stable: true
+  settling_time_q1_s: {max: 3.0}
+  settling_time_q2_s: {max: 3.0}
+  overshoot_q1_deg: {max: 30.0}
+  overshoot_q2_deg: {max: 30.0}
+  max_abs_tau1_nm: {max: 60.0}
+  max_abs_tau2_nm: {max: 30.0}

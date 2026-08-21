@@ -4,10 +4,9 @@ description: >
   overshoot is expected; the bar is recovery, not a clean response.
 
 disturbance:
-  tau1: 35.0
-  tau2: 0.0
+  link: link1
+  torque_y: 35.0
   pulse_duration: 0.4
-  rate_hz: 500.0
 
 settle_time_before_s: 1.0
 total_duration_s: 8.0

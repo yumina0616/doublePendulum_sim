@@ -4,7 +4,7 @@ project(double_pendulum_eval)
 find_package(ament_cmake REQUIRED)
 
 install(
-  PROGRAMS disturbance.py run_experiment.py
+  PROGRAMS disturbance.py run_experiment.py scripts/wrench_disturbance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(
