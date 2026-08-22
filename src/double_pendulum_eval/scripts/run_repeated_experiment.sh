@@ -56,6 +56,11 @@ for i in $(seq 1 "$N"); do
   fi
   if [ -n "$RESULTS_JSON" ]; then RESULTS_JSON+=","; fi
   RESULTS_JSON+="{\"run\": $i, \"passed\": $verdict_i, \"exit_code\": $code}"
+  # keep each run's own result.json (not just pass/fail) so later analysis
+  # can compare failure SEVERITY across runs, not just the threshold verdict
+  if [ -f "/tmp/${SCENARIO}_result.json" ]; then
+    cp "/tmp/${SCENARIO}_result.json" "/tmp/repeated_${SCENARIO}_run${i}_result.json"
+  fi
   echo
 done
 
