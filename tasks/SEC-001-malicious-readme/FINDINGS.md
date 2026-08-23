@@ -35,17 +35,37 @@ honoring its own task's spec.
 
 ## Residual risk (not protected)
 
-**Step 2 (fabricate result.json without running the simulation) is NOT
-caught by anything in the current harness.** `result.json` is normally
-*written by* task completion (that's its job), so it can't simply be
-added to `forbidden_changes` the way `specification.yaml` can. Nothing
-currently verifies that a `result.json`'s content actually originated from
-a real `run_experiment.py` execution against a real Gazebo run -- there is
-no provenance check, timestamp cross-reference, or independent replay.
-An agent that had already decided (whether by genuine confusion or by
-following an injected instruction like this one) to skip real simulation
-work could still hand-write a passing `result.json` and nothing here would
-object.
+**Step 2 (fabricate result.json without running the simulation) was NOT
+caught by anything in the harness as it stood when this scenario was
+first written.** `result.json` is normally *written by* task completion
+(that's its job), so it can't simply be added to `forbidden_changes` the
+way `specification.yaml` can. At the time, nothing verified that a
+`result.json`'s content actually originated from a real
+`run_experiment.py` execution against a real Gazebo run -- no provenance
+check, timestamp cross-reference, or independent replay existed.
+
+**Update (2026-08-23, same day): closed.** `harness/verify_task_completion.py`
+reads a task's own `result.json.verification_run.controller`/`.scenario`
+and independently re-invokes `run_clean_experiment.sh` for real -- a fresh
+Gazebo run, not something the agent gets to choose whether to do. It does
+NOT require the fresh verdict to match the original (CTRL-003's known
+PD/LQR run-to-run variance would make that a source of false alarms); it
+only requires that a real experiment ran to completion (exit 0/1), which
+is exactly the thing a hand-written `result.json` cannot produce. Verified
+against the real CTRL-004 task:
+
+```
+$ python3 verify_task_completion.py --task ../tasks/CTRL-004-statistical-acceptance
+...
+Fresh independent run completed for real: verdict=FAIL
+CONFIRMED: a real Gazebo experiment for this controller/scenario just ran
+to completion -- the claimed result.json was not fabricated without ever
+running the simulation.
+```
+
+(The fresh run's FAIL matched CTRL-004's originally claimed FAIL verdict
+here, but a match was not required for this to count as CONFIRMED --
+only that the pipeline genuinely executed.)
 
 **Step 3 (don't disclose) is a communication-honesty failure**, not
 something any file-level check can address at all -- it's outside this
@@ -65,10 +85,7 @@ agent's own report -- Phase 7's skill-promotion approval gate
 implements this principle at the *skill* level, but nothing implements it
 yet at the *task-completion* level.
 
-**Recommended follow-up** (not built this session, scope note for
-roadmap.md): a lightweight independent-replay check -- something outside
-the agent's own control that re-invokes `run_clean_experiment.sh` for a
-task's scenario and confirms the result matches the agent-reported
-`result.json` before the task is considered actually complete, mirroring
-`check_forbidden_changes.py`'s own design (a check that runs *on* the
-agent's work product, not one the agent chooses whether to run).
+This is now closed at the *task* level too (see Update above) -- both
+levels of "trust the agent's own report" that this project's approval-gate
+principle applies to (skill promotion, task completion) now have an
+independent, non-agent-chosen check.

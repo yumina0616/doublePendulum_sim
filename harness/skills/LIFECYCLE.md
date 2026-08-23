@@ -47,6 +47,17 @@ and refuse (non-zero exit) without it. Proposing a candidate
 (`retire_skill.py flag`) do not require approval, since neither changes
 what's actually active -- they only queue something for a gated decision.
 
+`--approved-by` alone is a *procedural* gate (someone must type a name),
+not a *substantive* one -- see `tasks/SEC-002-poisoned-skill/FINDINGS.md`,
+which demonstrated a real promotion of an unsafe skill on nothing but a
+good pass_rate number. `harness/safety_scan.py` adds a second layer: if
+the candidate/active skill's `procedure` text matches a denylist of
+safety-relevant keywords, both `promote_skill.py` and `retire_skill.py
+eval` additionally require `--acknowledge-safety-warning` before writing
+PROMOTE or STAY_ACTIVE. Not a hard block (a match isn't proof of an unsafe
+skill) -- a forcing function so a reviewer can no longer approve without
+at least being shown the warning.
+
 ## Sandbox policy
 
 A skill's `procedure` field is declarative text only. Checked directly:

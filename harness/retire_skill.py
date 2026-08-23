@@ -41,6 +41,7 @@ import json
 from pathlib import Path
 
 from skill_yaml import get_field, set_field
+from safety_scan import scan_procedure, print_warning
 
 
 def decide_reverify(baseline: dict, candidate: dict) -> tuple[bool, str]:
@@ -106,6 +107,18 @@ def cmd_eval(args):
     print(f"Approved by: {args.approved_by}")
     print("=" * 70)
 
+    matched_keywords = scan_procedure(text)
+    if matched_keywords:
+        print_warning(matched_keywords)
+        if keep_active and not args.acknowledge_safety_warning:
+            raise SystemExit(
+                "STAY_ACTIVE decision reached, but refusing to write it: procedure "
+                "text matched a safety denylist keyword and "
+                "--acknowledge-safety-warning was not given. Re-run with it only "
+                "after actually reading the procedure above, not just the "
+                "pass_rate numbers."
+            )
+
     text = set_field(text, "status", "retirement_eval")
     text = set_field(text, "retirement_eval_decision", "STAY_ACTIVE" if keep_active else "RETIRE")
     text = set_field(text, "retirement_eval_reason", f'"{reason}"')
@@ -145,6 +158,8 @@ def main():
     p_eval.add_argument("--candidate-summary", required=True)
     p_eval.add_argument("--verified-by", required=True)
     p_eval.add_argument("--approved-by", required=True)
+    p_eval.add_argument("--acknowledge-safety-warning", action="store_true",
+                         help="required in addition to --approved-by if the procedure text matches a safety denylist keyword and the decision is STAY_ACTIVE")
     p_eval.add_argument("--active-dir", default=None)
     p_eval.add_argument("--retired-dir", default=None)
     p_eval.set_defaults(func=cmd_eval)

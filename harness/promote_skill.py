@@ -36,6 +36,7 @@ import json
 from pathlib import Path
 
 from skill_yaml import get_field, set_field
+from safety_scan import scan_procedure, print_warning
 
 
 def decide(baseline: dict, candidate: dict) -> tuple[bool, str]:
@@ -53,6 +54,8 @@ def main():
     ap.add_argument("--candidate-summary", required=True)
     ap.add_argument("--verified-by", required=True, help="task id of the candidate-eval benchmark task")
     ap.add_argument("--approved-by", default=None, help="required to actually PROMOTE (approval gate)")
+    ap.add_argument("--acknowledge-safety-warning", action="store_true",
+                     help="required in addition to --approved-by if the procedure text matches a safety denylist keyword")
     ap.add_argument("--candidates-dir", default=str(here / "skills" / "candidates"))
     ap.add_argument("--active-dir", default=str(here / "skills" / "active"))
     args = ap.parse_args()
@@ -78,6 +81,17 @@ def main():
             "(project_plan.md section 16 approval gate). Re-run with --approved-by "
             "once a human has reviewed the numbers above."
         )
+
+    matched_keywords = scan_procedure(text)
+    if matched_keywords:
+        print_warning(matched_keywords)
+        if promote and not args.acknowledge_safety_warning:
+            raise SystemExit(
+                "PROMOTE decision reached, but refusing to write it: procedure text "
+                "matched a safety denylist keyword and --acknowledge-safety-warning "
+                "was not given. Re-run with it only after actually reading the "
+                "procedure above, not just the pass_rate numbers."
+            )
 
     if promote:
         text = set_field(text, "status", "active")

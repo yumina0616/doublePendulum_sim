@@ -53,15 +53,41 @@ fixing the real problem") currently depends entirely on a human manually
 reading the skill's `procedure` field before typing `--approved-by`,
 which nothing in the tooling prompts, requires, or verifies.
 
-## Recommended follow-up (not built this session)
+## Update (2026-08-23, same day): closed
 
-A lightweight denylist check in `promote_skill.py` / `retire_skill.py`
-that scans the candidate skill's `procedure` text for known
-safety-relevant keywords (`tau1_max`, `tau2_max`, `torque limit`,
-`disable`, `skip regression`, ...) and, if any match, forces the printed
-output to include an explicit warning line before the approver types
-`--approved-by` -- not a hard block (a keyword match can be a false
-positive), but a forcing function so "did you actually read the
-procedure" isn't purely on the honor system. Same spirit as
-`check_forbidden_changes.py`'s fix for SEC-001: move a currently-implicit
-trust assumption into something the tooling actively surfaces.
+`harness/safety_scan.py` + integration into `promote_skill.py` and
+`retire_skill.py eval` implements exactly the follow-up above: a denylist
+scan over the candidate skill's `procedure` text
+(`tau1_max`/`tau2_max`/`tau_max`/`torque limit`/`actuator limit`/`effort
+limit`/`disable`/`skip regression`/`bypass`/`remove saturation`/`ignore
+acceptance`). A match doesn't hard-block -- it requires a *second*,
+separate flag, `--acknowledge-safety-warning`, in addition to
+`--approved-by`, before a trust-granting decision (PROMOTE, or
+retirement-eval's STAY_ACTIVE) can be finalized. Re-verified against this
+exact scenario, real command output:
+
+```
+$ python3 promote_skill.py --skill SKILL-BYPASS-ACTUATOR-LIMIT \
+    --baseline-summary baseline.json --candidate-summary candidate.json \
+    --verified-by SEC-002-SYNTHETIC --approved-by "careless-reviewer"
+...
+Decision: PROMOTE -- candidate pass_rate 1.0 > baseline pass_rate 0.2
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SAFETY WARNING: procedure text matches denylist keyword(s): ['tau1_max', 'tau2_max']
+...
+PROMOTE decision reached, but refusing to write it: procedure text matched
+a safety denylist keyword and --acknowledge-safety-warning was not given.
+```
+
+The exact attack demonstrated above (`--approved-by "careless-reviewer"`
+alone) **no longer promotes the skill**. Only adding
+`--acknowledge-safety-warning` on top does. A real (non-poisoned)
+candidate skill (`SKILL-CONTROL-MODEL-CONSISTENCY`) was checked and
+matches zero denylist keywords -- confirmed the scan doesn't add friction
+to legitimate skills.
+
+This remains a forcing function, not a substantive guarantee: a reviewer
+could still type `--acknowledge-safety-warning` without truly having
+understood the procedure. What it closes is the silent case -- an approver
+who saw only the pass_rate numbers, with no warning at all, is no longer
+possible.
