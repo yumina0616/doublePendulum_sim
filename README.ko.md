@@ -57,9 +57,9 @@ REJECT)를 참고하세요.
 |---|---|---|
 | 0 — 환경 셋업 | WSL2에 ROS2 Humble + Gazebo Harmonic | ✅ 완료 |
 | 1 — Plant | URDF/Xacro 이중 진자, Gazebo spawn, joint state/torque I/O | ✅ 완료 |
-| 2 — 고전 제어 | PD, 선형화, LQR, 초기조건/외란 테스트 | ✅ 완료 — 아래 [한계](#알려진-한계-pdlqr-run-to-run-재현성) 참고 |
+| 2 — 고전 제어 | PD, 선형화, LQR, 초기조건/외란 테스트 | ✅ 완료 — 아래 [한계](#알려진-한계-pd-게인-튜닝) 참고 |
 | 3 — 자동 평가 하네스 | 시뮬레이션 → metric → `result.json` pass/fail, regression suite | ✅ 완료 — Phase 2의 미해결 이슈를 숨기지 않고 정확히 *잡아냄*(아래 한계 참고). 다만 아직 이분법 pass/fail이라 제어 실패와 인프라 실패를 구분 못함 |
-| 4 — 기본 코딩 에이전트 | task spec → PLAN.md → 코드 수정 → build → sim → 검증 | ✅ 4개 task 완료 (`CTRL-001`–`CTRL-004`) |
+| 4 — 기본 코딩 에이전트 | task spec → PLAN.md → 코드 수정 → build → sim → 검증 | ✅ 5개 task 완료 (`CTRL-001`–`CTRL-005`) |
 | 5 — Tool Architecture | structured robotics tool vs. raw bash | 🟨 6개 중 5개 완료(ROS graph inspection, run comparison 등); bash-vs-structured 비교실험만 보류 |
 | 6 — Self-Evolving Harness | failure store → categorize → skill 제안 → regression-gated promote/reject | ✅ MVP 완료 — 실제 skill 하나를 끝까지 제안·평가했고, **두 번(N=3, N=8) 다 정직하게 REJECT** — 아래 참고 |
 | 7 — Memory Lifecycle / Safety | skill retirement, stale rule detection, approval gate, sandbox policy, red-team 시나리오 | ✅ MVP 완료 — 이 프로젝트 자신의 도구에서 실제 취약점 2건 발견·수정(`SEC-001`, `SEC-002`) |
@@ -67,39 +67,47 @@ REJECT)를 참고하세요.
 위 모든 Phase는 `tasks/` 아래 실제 task 디렉토리(spec, plan, result, evidence)로
 뒷받침됩니다 — 근거 없는 상태 주장이 아닙니다.
 
-## 알려진 한계: PD/LQR run-to-run 재현성
+## 알려진 한계: PD 게인 튜닝
 
-**이 프로젝트에서 가장 중요한 미해결 문제이고, 숨기지 않고 명시합니다.**
-동일한 `nominal_balance` 시나리오에 대한 동일한 PD/LQR 실행이 매번 같은
-결과를 내지 않습니다. 세 번의 독립적인 조사(`CTRL-003`, `CTRL-004`, 그리고
-Phase 6의 `N=8` 후속 조사 중에도 다시)를 거쳤지만 근본 원인은 끝내
-특정하지 못했습니다 — 시도했지만 확인되지 않은 후보: DDS/discovery 타이밍,
-stale shared-memory 상태, WSL 네트워크 스택 저하. `CTRL-004`는 이걸 숨기는
-대신 평가기를 정직하게 만들었습니다 — 단일 실행을 그냥 믿는 대신 통계적(N회
-반복, pass *rate*) 판정 모드를 추가했고, 현재 `pd`/`nominal_balance`에 대해
-그 모드는 **0/5 통과**를 보고합니다. 5번 중 2번은 컨트롤러가 사실상 토크를
-전혀 걸지 않았습니다.
+*(이 섹션은 원래 미해결 run-to-run 재현성 위기를 다뤘습니다 — `CTRL-005`가
+근본 원인을 찾아 해결했습니다, 아래 참고.)* 동일한 `nominal_balance`
+시나리오에 대한 동일한 PD/LQR 실행이 예전엔 극단적으로 다른 결과를
+냈습니다(`CTRL-003`은 3번의 "동일한" 연속 실행에서 `overshoot_q1_deg`
+200.5, 26.8, 63.9를 관찰; `CTRL-004`의 통계적 판정 모드는 0/5 통과,
+5번 중 2번은 토크를 거의 안 걺). 두 번의 조사(`CTRL-003`, `CTRL-004`,
+그리고 Phase 6의 `N=8` 후속 조사)로도 원인을 못 찾았습니다.
 
-실제로 이게 뭘 의미하고 뭘 의미하지 않는지:
+**`CTRL-005`가 실제 원인을 찾아 고쳤고**, 물리나 DDS의 혼돈이 아니라
+이 프로젝트 자신의 평가 코드에 있던 구체적인 측정 유효성 버그 2개
+때문이었습니다. (1) PD 컨트롤러의 시작 경로엔 readiness 확인이
+**아예 없었습니다**(LQR과 달리 그냥 2초 sleep) — 그래서 커맨드
+토픽에 아직 연결 안 된 컨트롤러 상태로 실험이 시작될 수 있었고, run의
+일부 동안 실제 토크가 0이었습니다. (2) `run_experiment.py`의 기록
+스케줄이 실제 `/joint_states` 데이터 도착이 아니라 노드 *생성* 시점부터
+카운트다운을 시작해서, discovery가 충분히 느리면 6초짜리 시나리오
+전체를 샘플 0개로 날려버릴 수 있었습니다. 둘 다 blind wait 대신
+능동적 readiness 확인으로 수정. 재검증(`pd`/`nominal_balance`,
+N=7 clean run) 결과: `overshoot_q1_deg`가 이제 최대 **0.08도**
+(16.32~16.40)밖에 안 벌어집니다 — 170도+가 아니라. 세 번째 실제
+기여 요인(반복적인 `pkill -9`로 쌓이는 FastRTPS 공유메모리 잔여물)도
+찾았지만 공유 파이프라인엔 의도적으로 고치지 않았습니다 — 그 메모리
+영역은 프로젝트 범위가 아니라 머신 전체에 걸친 영역이라서입니다 —
+이유와 단일 세션 환경에서의 정확한 수정법은
+`tasks/CTRL-005-run-reproducibility/PLAN.md` 참고.
 
-- **진자는 실제로 눈으로 보이게 직립 안정화됩니다** — Phase 2에서 PD와 LQR
-  둘 다 Gazebo GUI로 인터랙티브하게 확인했습니다. "실제로 서 있는 거 보여줄
-  수 있어요?"라는 질문이라면, 답은 "네, 돌려보면 보입니다"입니다.
-- **탄탄하지 않은 건 자동화된, 반복 실행 판정 체크**입니다 — 동일한 조건에서
-  같은 시나리오를 연달아 돌려도 자기 pass 기준을 안정적으로 통과하지
-  못합니다. 이건 진짜, 아직 안 풀린 gap이지 문서화 안 된 gap이 아닙니다.
-- `CTRL-004`의 통계적 모드가 이 변동성을 보이게 만들고 정직하게 보고하게
-  만든 장치입니다(운 좋은 한 번의 실행을 그냥 믿는 대신) — 다만 지금은
-  진짜 제어 실패와 인프라 실패(discovery race, 메시지 유실 등)를 구분
-  못 하고 둘 다 그냥 "FAIL"로 묶입니다. 현재 진행 중인 후속 조사
-  (`CTRL-005`)에서 이미 실제 인프라 버그 2개를 찾아 고쳤습니다
-  (`run_clean_experiment.sh`의 컨트롤러 discovery race, `run_experiment.py`가
-  전체 run 동안 샘플 0개를 기록할 수 있었던 recording-start race). 재검증
-  초기 결과는 훨씬 일관되고 non-catastrophic하지만, 조사가 아직 안
-  끝났고 끝나면 이 섹션을 갱신할 예정입니다.
+**아직 안 풀린 것, 숨기지 않고 명시**: 저 재현 가능한 7번의 clean run
+중 어느 것도 `nominal_balance`를 실제로 **통과**하진 못합니다 —
+`settling_time_q1_s`가 3.0초 기준에 대해 일관되게 3.3~3.4초입니다.
+더 이상 미스터리가 아니라 그냥 평범하고 잘 정의된 게인 튜닝 문제일
+뿐입니다(PD의 decentralized 법칙이 10~15% 정도 느리게 정착함) — 아직
+안 닫힌 문제입니다. 진자는 실제로 눈으로 보이게 직립 안정화됩니다 —
+Phase 2에서 PD와 LQR 둘 다 Gazebo GUI로 확인했습니다 — 남은 문제는
+"서 있긴 하나"가 아니라 *자동화된, 정량적* 판정 기준을 안정적으로
+통과하는 것입니다.
 
 전체 조사 기록은 `tasks/CTRL-003-pd-reproducibility/`,
-`tasks/CTRL-004-statistical-acceptance/`, `tasks/CTRL-005-*`(진행 중) 참고.
+`tasks/CTRL-004-statistical-acceptance/`,
+`tasks/CTRL-005-run-reproducibility/` 참고.
 
 ## 레포 구조: 실제 코드는 어디 있나
 
@@ -147,7 +155,7 @@ HARNESS-001의 REJECT 결정, 이 README 자체의 "알려진 한계" 서술 방
 - `tasks/<ID>-.../` — 완료된 에이전틱 task마다 하나의 디렉토리:
   `specification.yaml`(목표, 허용/금지 변경, acceptance criteria),
   `PLAN.md`, `result.json`, `trajectory.jsonl`, `evidence/`. Phase 7
-  기준 11개 task 완료(`CTRL-001`–`004`, `TOOL-001`, `BENCH-001`–`003`,
+  기준 12개 task 완료(`CTRL-001`–`005`, `TOOL-001`, `BENCH-001`–`003`,
   `HARNESS-001`, `SEC-001`–`002`).
 - `harness/failure_store.py` / `categorize_failures.py` / `propose_skill.py`
   — 실패한 task들을 분류된 failure store로 바꾸고, 한 카테고리에 증거가

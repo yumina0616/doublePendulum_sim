@@ -58,9 +58,9 @@ Gazebo data — see [Phase 6](#current-status) below for the honest result
 |---|---|---|
 | 0 — Environment setup | ROS2 Humble + Gazebo Harmonic in WSL2 | ✅ done |
 | 1 — Plant | URDF/Xacro double pendulum, Gazebo spawn, joint state/torque I/O | ✅ done |
-| 2 — Classical control | PD, linearization, LQR, initial-condition/disturbance tests | ✅ done — see [limitation](#known-limitation-pdlqr-run-to-run-reproducibility) below |
+| 2 — Classical control | PD, linearization, LQR, initial-condition/disturbance tests | ✅ done — see [limitation](#known-limitation-pd-gain-tuning) below |
 | 3 — Automated evaluation harness | Simulation → metrics → `result.json` pass/fail, regression suite | ✅ done — it correctly caught Phase 2's open issue rather than masking it (see limitation below); still binary pass/fail, doesn't yet distinguish a control failure from an infra failure |
-| 4 — Basic coding agent | Task spec → PLAN.md → code change → build → sim → verify | ✅ 4 tasks completed (`CTRL-001`–`CTRL-004`) |
+| 4 — Basic coding agent | Task spec → PLAN.md → code change → build → sim → verify | ✅ 5 tasks completed (`CTRL-001`–`CTRL-005`) |
 | 5 — Tool architecture | Structured robotics tools vs. raw bash | 🟨 5/6 done (ROS graph inspection, run comparison, etc.); bash-vs-structured-tools ablation deferred |
 | 6 — Self-evolving harness | failure store → categorize → propose skill → regression-gated promote/reject | ✅ MVP done — one real skill proposed and evaluated end to end, honestly **REJECTed twice** (N=3, then N=8) — see below |
 | 7 — Memory lifecycle / safety | skill retirement, stale-rule detection, approval gate, sandbox policy, red-team scenarios | ✅ MVP done — includes two real vulnerabilities found and fixed against this project's own tooling (`SEC-001`, `SEC-002`) |
@@ -68,44 +68,46 @@ Gazebo data — see [Phase 6](#current-status) below for the honest result
 Every phase above is backed by a task directory under `tasks/` (spec, plan,
 result, evidence) — this isn't a status claim without a paper trail.
 
-## Known limitation: PD/LQR run-to-run reproducibility
+## Known limitation: PD gain tuning
 
-**This is the project's most important open problem, stated plainly instead
-of buried:** identical PD/LQR runs against the same `nominal_balance`
-scenario do not reliably produce the same outcome. Across three separate
-investigations (`CTRL-003`, `CTRL-004`, and again during the Phase 6 `N=8`
-follow-up) the root cause was never isolated — candidate mechanisms tested
-and *not* confirmed include DDS/discovery timing, stale shared-memory state,
-and WSL network-stack degradation. `CTRL-004` made the evaluator honest
-about this instead of hiding it: it added a statistical (N-repeat, pass
-*rate*) acceptance mode rather than trusting any single run, and against
-`pd`/`nominal_balance` that mode reports **0/5 passing** at present, with
-two of five runs showing the controller applying essentially zero torque.
+*(This section used to describe an unexplained run-to-run reproducibility
+crisis — `CTRL-005` root-caused it; see below.)* Identical PD/LQR runs
+against `nominal_balance` used to produce wildly
+different outcomes (`CTRL-003` observed `overshoot_q1_deg` of 200.5, 26.8,
+63.9 across 3 back-to-back "identical" runs; `CTRL-004`'s statistical
+acceptance mode reported 0/5 passing, two of five with essentially zero
+torque applied). Two investigations (`CTRL-003`, `CTRL-004`, plus a Phase
+6 `N=8` follow-up) failed to isolate why.
 
-What this does and doesn't mean in practice:
+**`CTRL-005` found and fixed the actual cause**, and it was not physics or
+DDS chaos: two concrete measurement-validity bugs in this project's own
+evaluation code. (1) The PD controller's startup path had *no readiness
+check at all* (a blind 2-second sleep, unlike LQR's), so the experiment
+could start against a controller not yet connected to its command topic —
+zero real torque for part of the run. (2) `run_experiment.py`'s recording
+schedule started counting down from node *construction* instead of from
+real `/joint_states` data arriving, so a slow-enough discovery could burn
+through an entire 6-second scenario recording zero samples. Both fixed
+with active readiness checks instead of blind waits. Re-verified,
+`pd`/`nominal_balance`, N=7 clean runs: `overshoot_q1_deg` now varies by
+at most **0.08 degrees** (16.32–16.40) — not 170+. A third, real
+contributing factor (stale FastRTPS shared-memory segments from repeated
+`pkill -9` cycles) was identified but deliberately left unfixed in the
+shared pipeline, since that memory is machine-wide, not project-scoped —
+see `tasks/CTRL-005-run-reproducibility/PLAN.md` for why, and the exact
+fix for a single-tenant environment.
 
-- **The pendulum does visibly stabilize upright** — this was confirmed
-  interactively via the Gazebo GUI for both PD and LQR during Phase 2. If
-  the question is "can you show me it balancing," the honest answer is yes,
-  watch it run.
-- **What is NOT solid is the automated, repeated-run acceptance check** —
-  the same scenario, run back to back under identical conditions, does not
-  reliably clear its own pass threshold. This is a real, unresolved gap,
-  not a documentation gap.
-- `CTRL-004`'s statistical mode is what makes this variance visible and
-  honestly reported instead of silently trusting a lucky run — but it
-  currently can't tell a genuine control failure apart from an
-  infrastructure failure (discovery race, dropped messages, etc.); both
-  just count as "FAIL." An active investigation (`CTRL-005`, in progress)
-  has already found and fixed two concrete infra bugs this way (a
-  controller-discovery race in `run_clean_experiment.sh`, and a
-  recording-start race in `run_experiment.py` that could record zero
-  samples for an entire run) — early re-tests show much more consistent,
-  non-catastrophic results, though the investigation isn't finished and
-  this section will be updated once it is.
+**What's still open, stated plainly**: none of those 7 clean, reproducible
+runs actually *pass* `nominal_balance` — `settling_time_q1_s` consistently
+lands at 3.3–3.4s against a 3.0s max. That's no longer a mystery, just an
+ordinary, well-posed gain-tuning gap (PD's decentralized law settles
+~10–15% too slowly), not yet closed. The pendulum does visibly stabilize
+upright — confirmed interactively via the Gazebo GUI for both PD and LQR
+during Phase 2 — the open item is clearing the *automated, quantitative*
+acceptance threshold consistently, not "does it balance at all."
 
 See `tasks/CTRL-003-pd-reproducibility/`, `tasks/CTRL-004-statistical-acceptance/`,
-and `tasks/CTRL-005-*` (in progress) for the full investigation trail.
+and `tasks/CTRL-005-run-reproducibility/` for the full investigation trail.
 
 ## Repo layout: where the actual code lives
 
@@ -154,7 +156,7 @@ rejected or qualified rather than reported as clean wins.
 - `tasks/<ID>-.../` — one directory per completed agentic task:
   `specification.yaml` (goal, allowed/forbidden changes, acceptance
   criteria), `PLAN.md`, `result.json`, `trajectory.jsonl`, `evidence/`.
-  11 tasks completed as of Phase 7 (`CTRL-001`–`004`, `TOOL-001`,
+  12 tasks completed as of Phase 7 (`CTRL-001`–`005`, `TOOL-001`,
   `BENCH-001`–`003`, `HARNESS-001`, `SEC-001`–`002`).
 - `harness/failure_store.py` / `categorize_failures.py` / `propose_skill.py`
   — turns failed tasks into a categorized failure store and, once a category
