@@ -68,7 +68,6 @@ echo "[3/4] Starting $CONTROLLER controller..."
 if [ "$CONTROLLER" = "pd" ]; then
   ros2 run double_pendulum_control controller_node.py "${EXTRA_ARGS[@]}" > /tmp/ctrl_launch.log 2>&1 &
   CTRL_PID=$!
-  sleep 2
 elif [ "$CONTROLLER" = "lqr" ]; then
   ros2 run double_pendulum_control lqr_node.py "${EXTRA_ARGS[@]}" > /tmp/ctrl_launch.log 2>&1 &
   CTRL_PID=$!
@@ -96,6 +95,40 @@ else
   echo "Unknown controller '$CONTROLLER' (expected pd|lqr)" >&2
   kill "$GZ_PID" 2>/dev/null
   exit 2
+fi
+
+# CTRL-005: neither branch above actually confirms the controller node's
+# own /joint_states subscription and /effort_controller/commands publisher
+# have completed ROS graph discovery -- PD relied on a blind `sleep 2`
+# (no check at all), and LQR's "LQR ready" log line is printed BEFORE
+# lqr_node.py creates its subscription/publisher/timer, so it only proves
+# gain design finished, not that discovery has. This is the exact same bug
+# CLASS CTRL-004 already found and fixed for /joint_states (zero-delay
+# subscribe racing DDS discovery) -- just never applied here. Root-cause
+# candidate for CTRL-003's still-unexplained PD variance: if the
+# controller's publisher isn't discovered yet when the disturbance hits,
+# real torque output is 0 for part or all of the run (matches CTRL-004's
+# observed max_abs_tau1_nm=0.0 catastrophic-failure runs). Actively confirm
+# instead of guessing a sleep duration.
+echo "  waiting for $CONTROLLER's /effort_controller/commands publisher to actually be discovered..."
+CTRL_TOPIC_READY=false
+for i in $(seq 1 30); do
+  if timeout 2 ros2 topic echo /effort_controller/commands --once > /dev/null 2>&1; then
+    echo "  $CONTROLLER controller is actively publishing (confirmed after ${i}s)"
+    CTRL_TOPIC_READY=true
+    break
+  fi
+done
+if [ "$CTRL_TOPIC_READY" != "true" ]; then
+  echo "ERROR: $CONTROLLER controller never published on /effort_controller/commands" >&2
+  echo "  within ~60s -- aborting instead of running the experiment against a" >&2
+  echo "  controller that may not be discovered yet." >&2
+  echo "  --- last lines of ctrl_launch.log ---" >&2
+  tail -20 /tmp/ctrl_launch.log >&2
+  kill "$CTRL_PID" "$GZ_PID" 2>/dev/null
+  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
+  pkill -9 -f '[g]z sim' 2>/dev/null
+  exit 5
 fi
 
 echo "[4/4] Running experiment: $SCENARIO"

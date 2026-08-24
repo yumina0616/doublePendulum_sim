@@ -124,6 +124,20 @@ class ExperimentRunner(Node):
     def _on_tick(self):
         if self._finished:
             return
+        if not self.rec_t:
+            # CTRL-005: _on_tick's 0.02s timer starts firing at node
+            # construction, long before /joint_states discovery is
+            # guaranteed to have completed. _now_s() lazily sets t0 on its
+            # FIRST call -- if that first call came from _on_tick instead
+            # of a real _on_joint_states callback, the whole settle/push/
+            # total_duration schedule starts counting down from node
+            # startup instead of from real data flow, and a slow discovery
+            # can burn through the entire scenario before any sample is
+            # ever recorded (observed: a run with n_samples_joint_states=0
+            # AND n_samples_effort=0 -- not a physics result, an artifact
+            # of this race). Don't advance the schedule at all until the
+            # first real /joint_states message has set t0 itself.
+            return
         t = self._now_s()
 
         if not self._pulse_applied and t >= self.settle_before:
@@ -190,9 +204,23 @@ def main():
 
     rclpy.init()
     node = ExperimentRunner(scenario, args.controller, output_path)
+    start_wall = time.time()
+    discovery_timeout_s = 30.0
     try:
         while rclpy.ok() and not node._finished:
             rclpy.spin_once(node, timeout_sec=0.05)
+            if not node.rec_t and (time.time() - start_wall) > discovery_timeout_s:
+                node.get_logger().error(
+                    f"no /joint_states received within {discovery_timeout_s}s of "
+                    f"startup -- aborting (infra failure, not a physics result). "
+                    f"See CTRL-005: the schedule intentionally does not start "
+                    f"until real data arrives, so this is a genuine discovery "
+                    f"failure, not a slow scenario."
+                )
+                node.destroy_node()
+                if rclpy.ok():
+                    rclpy.shutdown()
+                raise SystemExit(6)
     except KeyboardInterrupt:
         pass
     exit_code = getattr(node, "_exit_code", 1)

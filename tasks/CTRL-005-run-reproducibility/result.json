@@ -1,0 +1,54 @@
+{
+  "task_id": "CTRL-005",
+  "goal": "Re-investigate CTRL-003's unexplained PD/LQR run-to-run non-reproducibility with fresh eyes on the actual code",
+  "timestamp": "2026-08-24T16:40:00Z",
+  "changed_files": [
+    "double_pendulum_eval/scripts/run_clean_experiment.sh (PD path: replaced blind sleep 2 with an active /effort_controller/commands readiness poll)",
+    "double_pendulum_eval/run_experiment.py (_on_tick now gates the schedule clock on real /joint_states data having arrived; added a 30s startup safety timeout)"
+  ],
+  "bugs_found": [
+    {
+      "id": "controller-readiness-race",
+      "description": "PD controller startup had no readiness check at all (blind sleep 2), unlike LQR's log-based check. A slow ROS graph discovery could leave the experiment running against a controller not yet connected to /effort_controller/commands -- zero real torque for part or all of the run.",
+      "matches_prior_evidence": "CTRL-004's '2 of 5 runs show max_abs_tau1_nm=0.0'"
+    },
+    {
+      "id": "schedule-start-race",
+      "description": "run_experiment.py's settle/disturbance/total_duration schedule started counting from node construction (via the first _on_tick call lazily setting t0), not from real /joint_states data flow. A slow discovery could burn through the whole scenario before any sample was recorded.",
+      "confirmed_by": "a run recording n_samples_joint_states=0, n_samples_effort=0 for a full 6s scenario despite the topic genuinely flowing (confirmed by a separate liveness check)"
+    },
+    {
+      "id": "fastrtps-shm-accumulation",
+      "description": "pkill -9 (SIGKILL) cleanup doesn't let FastRTPS release its /dev/shm shared-memory segments cleanly; they accumulate (and some corrupt) across repeated launch/kill cycles within a session, causing later RTPS_TRANSPORT_SHM open_and_lock_file failures.",
+      "fixed_permanently": false,
+      "reason_not_fixed_permanently": "that shared-memory space is not scoped to this project -- it is shared by every ROS2 process at the same DOMAIN_ID on the machine, including any other concurrent session. Applied manually, one-off, for this investigation's own batches only, per explicit user direction after a real collision with another concurrent session mid-investigation."
+    }
+  ],
+  "verification_run": {
+    "controller": "pd",
+    "scenario": "nominal_balance",
+    "n_runs_attempted": 8,
+    "n_runs_valid": 7,
+    "n_runs_infra_aborted_cleanly": 1,
+    "overshoot_q1_deg_range": [16.32, 16.40],
+    "overshoot_q2_deg_range": [11.07, 11.49],
+    "settling_time_q1_s_range": [3.328, 3.411],
+    "catastrophic_count": 0,
+    "baseline_for_comparison": {
+      "CTRL-003_N3_overshoot_q1_deg": [200.49, 26.78, 63.93],
+      "CTRL-004_N5_pass_rate": 0.0,
+      "CTRL-004_N5_zero_torque_catastrophic_count": 2
+    }
+  },
+  "acceptance_checks": {
+    "concrete_code_level_bug_identified_and_fixed": true,
+    "fresh_N7_comparison_shows_reduced_variance": true,
+    "honestly_documented_either_way": true
+  },
+  "regression_checks": {
+    "single_run_clean_experiment_pd_still_works": true,
+    "single_run_clean_experiment_lqr_not_separately_reverified_this_task": "not yet done -- LQR wasn't the focus of this investigation since it already had its own (imperfect but present) readiness check; worth a follow-up spot check"
+  },
+  "passed": true,
+  "notes": "The 'chaotic' run-to-run variance was not genuine physics/control chaos -- it was almost entirely explained by two concrete, fixable measurement-validity bugs. With both fixed, pd/nominal_balance is highly reproducible (overshoot_q1_deg varies by at most ~0.08deg across 7 runs, not 170+). None of the 7 runs actually pass nominal_balance's acceptance criteria -- settling_time_q1_s consistently lands at 3.3-3.4s against a 3.0s max. This is now an honest, ordinary gain-tuning gap, not a reproducibility mystery. The third factor found (FastRTPS /dev/shm accumulation) is real and reproducible but deliberately not baked into the shared pipeline, since it's a machine-wide resource, not a project-scoped one -- documented as a known factor with its exact fix for anyone running this in a single-tenant environment."
+}
