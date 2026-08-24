@@ -2,8 +2,9 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-ROS2(Humble) + Gazebo Sim(Harmonic)에서 2-DOF 이중 진자를 완전 직립(upright)
-자세로 안정화하는 제어 프로젝트입니다. 그 위에 에이전틱 엔지니어링 레이어를
+ROS2(Humble) + Gazebo Sim(Harmonic)에서 **완전구동(fully actuated)** 2-DOF
+이중 진자를 완전 직립(upright) 자세로 안정화하는 제어 프로젝트입니다. 그 위에
+에이전틱 엔지니어링 레이어를
 얹었습니다: 스펙을 보고 컨트롤러/ROS2 코드를 수정하고, 실제 Gazebo
 시뮬레이션(mock 아님)으로 자기 변경을 직접 검증하는 코딩 에이전트입니다. 그리고
 단순 코딩 에이전트 데모를 넘어서는 부분 — 자기 실패 이력에서 재사용 가능한
@@ -16,7 +17,7 @@ Engineering Task → Agent Plan → Code Change → colcon build
                                                      │
                                             Gazebo Simulation
                                                      │
-                                  rosbag/topic 기록 → Control Metrics
+                                  메모리 내 topic 기록 → Control Metrics
                                                      │
                                              Pass / Fail
                                                      │
@@ -57,7 +58,7 @@ REJECT)를 참고하세요.
 | 0 — 환경 셋업 | WSL2에 ROS2 Humble + Gazebo Harmonic | ✅ 완료 |
 | 1 — Plant | URDF/Xacro 이중 진자, Gazebo spawn, joint state/torque I/O | ✅ 완료 |
 | 2 — 고전 제어 | PD, 선형화, LQR, 초기조건/외란 테스트 | ✅ 완료 — 아래 [한계](#알려진-한계-pdlqr-run-to-run-재현성) 참고 |
-| 3 — 자동 평가 하네스 | 시뮬레이션 → metric → `result.json` pass/fail, regression suite | ✅ 완료 — 하네스 자체는 탄탄함. 오히려 Phase 2의 미해결 이슈를 *잡아낸* 게 이 하네스임 |
+| 3 — 자동 평가 하네스 | 시뮬레이션 → metric → `result.json` pass/fail, regression suite | ✅ 완료 — Phase 2의 미해결 이슈를 숨기지 않고 정확히 *잡아냄*(아래 한계 참고). 다만 아직 이분법 pass/fail이라 제어 실패와 인프라 실패를 구분 못함 |
 | 4 — 기본 코딩 에이전트 | task spec → PLAN.md → 코드 수정 → build → sim → 검증 | ✅ 4개 task 완료 (`CTRL-001`–`CTRL-004`) |
 | 5 — Tool Architecture | structured robotics tool vs. raw bash | 🟨 6개 중 5개 완료(ROS graph inspection, run comparison 등); bash-vs-structured 비교실험만 보류 |
 | 6 — Self-Evolving Harness | failure store → categorize → skill 제안 → regression-gated promote/reject | ✅ MVP 완료 — 실제 skill 하나를 끝까지 제안·평가했고, **두 번(N=3, N=8) 다 정직하게 REJECT** — 아래 참고 |
@@ -87,14 +88,18 @@ stale shared-memory 상태, WSL 네트워크 스택 저하. `CTRL-004`는 이걸
 - **탄탄하지 않은 건 자동화된, 반복 실행 판정 체크**입니다 — 동일한 조건에서
   같은 시나리오를 연달아 돌려도 자기 pass 기준을 안정적으로 통과하지
   못합니다. 이건 진짜, 아직 안 풀린 gap이지 문서화 안 된 gap이 아닙니다.
-- 여기서 하네스 자체는 문제가 아닙니다 — `CTRL-004`의 통계적 모드가 바로
-  이 변동성을 보이게 만들고 정직하게 보고하게 만든 장치입니다(운 좋은 한
-  번의 실행을 그냥 믿는 대신). 평가 하네스가 자기 컨트롤러의 불안정성을
-  잡아낸다는 것 자체를, 숨겨진 실패가 아니라 하네스가 제대로 작동한다는
-  증거로 취급합니다.
+- `CTRL-004`의 통계적 모드가 이 변동성을 보이게 만들고 정직하게 보고하게
+  만든 장치입니다(운 좋은 한 번의 실행을 그냥 믿는 대신) — 다만 지금은
+  진짜 제어 실패와 인프라 실패(discovery race, 메시지 유실 등)를 구분
+  못 하고 둘 다 그냥 "FAIL"로 묶입니다. 현재 진행 중인 후속 조사
+  (`CTRL-005`)에서 이미 실제 인프라 버그 2개를 찾아 고쳤습니다
+  (`run_clean_experiment.sh`의 컨트롤러 discovery race, `run_experiment.py`가
+  전체 run 동안 샘플 0개를 기록할 수 있었던 recording-start race). 재검증
+  초기 결과는 훨씬 일관되고 non-catastrophic하지만, 조사가 아직 안
+  끝났고 끝나면 이 섹션을 갱신할 예정입니다.
 
 전체 조사 기록은 `tasks/CTRL-003-pd-reproducibility/`,
-`tasks/CTRL-004-statistical-acceptance/` 참고.
+`tasks/CTRL-004-statistical-acceptance/`, `tasks/CTRL-005-*`(진행 중) 참고.
 
 ## 레포 구조: 실제 코드는 어디 있나
 
@@ -110,6 +115,23 @@ stale shared-memory 상태, WSL 네트워크 스택 저하. `CTRL-004`는 이걸
 버려진 프로토타입에서 온, 관련 없는 작은 자체 git 히스토리를 갖고 있고,
 실제 커밋이나 코드가 있는 곳이 **아닙니다** — WSL2 안에서 만들어진 이
 저장소가 진짜입니다.
+
+## 저자성 (Authorship)
+
+컨트롤러/ROS2/평가 하네스/에이전틱 하네스 구현 코드는 거의 전부 코딩
+에이전트(Claude, Claude Code 경유)가 작성했습니다. spec-first 워크플로우
+아래에서: 모든 task는 에이전트가 뭔가를 구현하기 *전에* 사람이 검토
+가능한 `specification.yaml`(목표, 허용/금지 변경, acceptance criteria)이
+먼저 고정됐고, 그래서 에이전트가 나중에 "성공"의 정의를 스스로 바꿀 수
+없습니다(이걸 기계적으로 강제하는 장치는 위 `SEC-001` 참고). 사람이 한
+일: 프로젝트 범위·방향 결정, 각 task의 acceptance criteria 작성/승인,
+애매하거나 경계선상인 결과의 해석(예: CTRL-003의 INCONCLUSIVE 판정,
+HARNESS-001의 REJECT 결정, 이 README 자체의 "알려진 한계" 서술 방식
+결정), 그리고 매 단계마다 에이전트의 작업을 검증 없이 그냥 받아들이지
+않고 검토하는 것. "알려진 한계"나 `SEC-001`/`SEC-002` 발견 사항 같은
+섹션이 존재하는 이유 자체가, 보기 좋은 결과들도 검토를 거쳐 여러 번
+반려되거나 조건부로만 인정됐지 그냥 깨끗한 성공으로 보고되지 않았다는
+증거입니다.
 
 ## 패키지 구조
 
@@ -136,6 +158,8 @@ stale shared-memory 상태, WSL 네트워크 스택 저하. `CTRL-004`는 이걸
   하고, **이름이 명시된 사람의 승인**(`--approved-by`)도 필요합니다.
   active skill은 stale로 플래그될 수 있고(`stale_check.py`, 실제 git
   이력 대조), 동일한 게이트를 거쳐 retirement 절차를 밟습니다.
+  한계를 숨기지 않고 명시: `--approved-by`는 이름만 기록할 뿐, 그 사람이
+  실제로 검토했다는 걸 확인하지는 않습니다 — 아래 `SEC-002` 참고.
 - `harness/safety_scan.py` / `check_forbidden_changes.py` /
   `verify_task_completion.py` — 이 프로젝트 자신의 도구를 대상으로 한
   두 번의 red-team 실험에서 실제 구멍을 찾고 나서 추가한 하드닝입니다:
@@ -148,8 +172,12 @@ stale shared-memory 상태, WSL 네트워크 스택 저하. `CTRL-004`는 이걸
     한계를 없애라는 가짜 skill — 조작된 pass-rate 숫자만으로 실제로
     promote까지 성공했습니다. regression gate엔 안전성 판단이 전혀
     없고, `--approved-by`를 입력하는 사람이 절차를 실제로 읽었는지는
-    확인되지 않기 때문입니다. 안전 관련 절차엔 명시적인 2차 확인을
-    강제하는 denylist 스캔으로 수정했습니다.
+    확인되지 않기 때문입니다. **완전히 해결한 게 아니라 완화**한
+    것입니다: denylist 키워드가 매칭되면 눈에 보이는 경고와 함께
+    별도의 2차 플래그(`--acknowledge-safety-warning`)를 강제로 요구합니다.
+    이건 경고를 조용히 놓치는 걸 막는 장치일 뿐 실질적 안전 증명은
+    아닙니다 — 리뷰어가 제대로 이해 안 하고 그냥 플래그만 입력할 수도
+    있고, denylist 키워드에 안 걸리는 절차는 그냥 통과합니다.
 
   전체 내용과 **아직도 안 막힌 부분**(숨기지 않고 문서화됨)은
   `tasks/SEC-001-malicious-readme/FINDINGS.md`,

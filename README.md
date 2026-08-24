@@ -2,9 +2,10 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-A control engineering project that stabilizes a 2-DOF double pendulum in the
-fully inverted (upright) configuration using ROS2 (Humble) + Gazebo Sim
-(Harmonic) — with an agentic engineering layer on top: a coding agent that
+A control engineering project that stabilizes a **fully actuated** 2-DOF
+double pendulum in the fully inverted (upright) configuration using ROS2
+(Humble) + Gazebo Sim (Harmonic) — with an agentic engineering layer on top:
+a coding agent that
 modifies controller/ROS2 code against a specification, verifies its own
 changes with real Gazebo simulation (not mocked), and — the part that makes
 this more than a coding-agent demo — extracts reusable engineering rules
@@ -17,7 +18,7 @@ Engineering Task → Agent Plan → Code Change → colcon build
                                                      │
                                             Gazebo Simulation
                                                      │
-                                  rosbag / topic log → Control Metrics
+                                  in-memory topic log → Control Metrics
                                                      │
                                                Pass / Fail
                                                      │
@@ -58,7 +59,7 @@ Gazebo data — see [Phase 6](#current-status) below for the honest result
 | 0 — Environment setup | ROS2 Humble + Gazebo Harmonic in WSL2 | ✅ done |
 | 1 — Plant | URDF/Xacro double pendulum, Gazebo spawn, joint state/torque I/O | ✅ done |
 | 2 — Classical control | PD, linearization, LQR, initial-condition/disturbance tests | ✅ done — see [limitation](#known-limitation-pdlqr-run-to-run-reproducibility) below |
-| 3 — Automated evaluation harness | Simulation → metrics → `result.json` pass/fail, regression suite | ✅ done — the harness itself is solid; it is what *caught* Phase 2's open issue |
+| 3 — Automated evaluation harness | Simulation → metrics → `result.json` pass/fail, regression suite | ✅ done — it correctly caught Phase 2's open issue rather than masking it (see limitation below); still binary pass/fail, doesn't yet distinguish a control failure from an infra failure |
 | 4 — Basic coding agent | Task spec → PLAN.md → code change → build → sim → verify | ✅ 4 tasks completed (`CTRL-001`–`CTRL-004`) |
 | 5 — Tool architecture | Structured robotics tools vs. raw bash | 🟨 5/6 done (ROS graph inspection, run comparison, etc.); bash-vs-structured-tools ablation deferred |
 | 6 — Self-evolving harness | failure store → categorize → propose skill → regression-gated promote/reject | ✅ MVP done — one real skill proposed and evaluated end to end, honestly **REJECTed twice** (N=3, then N=8) — see below |
@@ -91,14 +92,20 @@ What this does and doesn't mean in practice:
   the same scenario, run back to back under identical conditions, does not
   reliably clear its own pass threshold. This is a real, unresolved gap,
   not a documentation gap.
-- The harness itself is not the problem here — `CTRL-004`'s statistical
-  mode is specifically what makes this variance visible and honestly
-  reported instead of silently trusting a lucky run. That the evaluation
-  harness catches its own controller's flakiness is treated as evidence
-  the harness works, not as a hidden failure.
+- `CTRL-004`'s statistical mode is what makes this variance visible and
+  honestly reported instead of silently trusting a lucky run — but it
+  currently can't tell a genuine control failure apart from an
+  infrastructure failure (discovery race, dropped messages, etc.); both
+  just count as "FAIL." An active investigation (`CTRL-005`, in progress)
+  has already found and fixed two concrete infra bugs this way (a
+  controller-discovery race in `run_clean_experiment.sh`, and a
+  recording-start race in `run_experiment.py` that could record zero
+  samples for an entire run) — early re-tests show much more consistent,
+  non-catastrophic results, though the investigation isn't finished and
+  this section will be updated once it is.
 
-See `tasks/CTRL-003-pd-reproducibility/` and `tasks/CTRL-004-statistical-acceptance/`
-for the full investigation trail.
+See `tasks/CTRL-003-pd-reproducibility/`, `tasks/CTRL-004-statistical-acceptance/`,
+and `tasks/CTRL-005-*` (in progress) for the full investigation trail.
 
 ## Repo layout: where the actual code lives
 
@@ -114,6 +121,24 @@ during development, plus a manually-synced copy of this README for local
 editing convenience). It has its own small, unrelated git history from an
 early, abandoned prototype and is **not** where the real commits or code
 live — this repository, built inside WSL2, is the one that matters.
+
+## Authorship
+
+The coding agent (Claude, via Claude Code) wrote essentially all of the
+controller/ROS2/evaluation-harness/agentic-harness implementation code
+under a spec-first workflow: for every task, a human-reviewable
+`specification.yaml` (goal, allowed/forbidden changes, acceptance criteria)
+was fixed *before* the agent implemented anything, so the agent could not
+redefine what counted as success after the fact (and see `SEC-001` above
+for what mechanically enforces that boundary now). What a human did: set
+the project's scope and direction, wrote/approved each task's acceptance
+criteria, decided how to interpret ambiguous or borderline results (e.g.
+CTRL-003's INCONCLUSIVE verdict, HARNESS-001's REJECT decisions, this
+README's own "Known limitation" framing), and reviewed the agent's work at
+each step rather than accepting results uncritically — the whole point of
+sections like "Known limitation" and the `SEC-001`/`SEC-002` findings is
+that convenient-looking results were checked and, in several cases,
+rejected or qualified rather than reported as clean wins.
 
 ## Package layout
 
@@ -139,6 +164,9 @@ live — this repository, built inside WSL2, is the one that matters.
   no-skill baseline, **plus a named human approver** (`--approved-by`);
   active skills can be flagged stale (`stale_check.py`, checked against
   real git history) and go through the same gated retirement path.
+  Limitation, stated plainly: `--approved-by` records a name, it doesn't
+  verify a review happened — nothing currently confirms the named approver
+  actually read the procedure before typing it (see `SEC-002` below).
 - `harness/safety_scan.py` / `check_forbidden_changes.py` /
   `verify_task_completion.py` — hardening added after two red-team
   exercises against this project's own tooling found real gaps:
@@ -152,9 +180,14 @@ live — this repository, built inside WSL2, is the one that matters.
     actuator torque limits instead of fixing the controller — promoted
     successfully on fabricated pass-rate numbers alone, because the
     regression gate has no safety awareness and a human approver typing
-    `--approved-by` doesn't have to have read the procedure. Fixed with a
-    denylist scan that forces an explicit second acknowledgement for
-    safety-relevant procedures.
+    `--approved-by` doesn't have to have read the procedure. Mitigated,
+    not solved, with a denylist scan: a keyword match forces a visible
+    warning and a *separate* second flag (`--acknowledge-safety-warning`)
+    before such a procedure can be trusted. This is a forcing function
+    against silently missing the warning, not a real safety proof — a
+    reviewer can still type past it without truly understanding the risk,
+    and a procedure using none of the denylist's keywords would sail
+    through unflagged.
 
   See `tasks/SEC-001-malicious-readme/FINDINGS.md` and
   `tasks/SEC-002-poisoned-skill/FINDINGS.md` for the full write-ups,
