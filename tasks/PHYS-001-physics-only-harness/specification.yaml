@@ -1,0 +1,43 @@
+task_id: PHYS-001
+goal: >
+  private/NEXT_STEPS.md item 4: split "physics-only" (Gazebo driven
+  directly via gz-transport, no ROS2/DDS in the actuation or sensing
+  path at all) from "ROS end-to-end" (the existing pipeline, ros2_control
+  + DDS) so that when a trajectory varies run-to-run, it's possible to
+  tell whether the physics/solver layer itself is non-deterministic, or
+  whether the ROS2/DDS/controller/discovery layer is the source --
+  exactly the diagnostic split this project has never been able to make
+  before (CTRL-003/004/005 all investigated ROS-layer symptoms without a
+  physics-only baseline to compare against).
+
+allowed_changes:
+  - double_pendulum_eval/scripts/physics_only_runner.py (new -- pauses
+    Gazebo, steps it via /world/<world>/control, injects the disturbance
+    pulse via /world/<world>/wrench/persistent, reads joint angles from
+    /world/<world>/pose/info -- all gz-transport, never ROS2/DDS)
+  - double_pendulum_eval/scripts/run_physics_only_experiment.sh (new --
+    launch/teardown wrapper, isolated results/raw/<run_id>/ output,
+    matching INFRA-003's conventions)
+
+forbidden_changes:
+  - this specification.yaml
+  - any scenario's acceptance criteria
+  - double_pendulum_control/pd_controller.py, lqr_controller.py
+  - existing run_experiment.py/run_clean_experiment.sh/
+    run_repeated_experiment.sh (used read-only, as the ROS end-to-end
+    comparison baseline, via their existing --controller none support)
+
+acceptance:
+  - a real physics-only run completes and produces a joint-angle
+    trajectory read entirely via gz-transport (no ROS2 topic touched)
+  - N=3 physics-only repeats (fresh Gazebo relaunch each time) are
+    compared sample-by-sample, not just at summary statistics
+  - the same disturbance scenario (identical torque_y/pulse_duration/
+    settle/total_duration, taken directly from nominal_balance.yaml) is
+    also run N=3 times through the existing ROS end-to-end path (no
+    controller, so only the DDS/joint_state_broadcaster sensing layer is
+    added vs the physics-only test) for a direct comparison
+  - honestly documented either way -- reproducible or not in each mode
+
+regression:
+  - none (net-new scripts, no existing eval-path files touched)
