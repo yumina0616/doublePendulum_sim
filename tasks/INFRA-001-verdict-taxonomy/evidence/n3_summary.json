@@ -1,0 +1,16 @@
+{
+  "controller": "pd",
+  "scenario": "nominal_balance",
+  "n_runs": 3,
+  "n_pass_control": 0,
+  "n_fail_control": 2,
+  "n_invalid_infra": 1,
+  "n_fail_harness": 0,
+  "n_control_runs": 2,
+  "pass_rate": 0.0,
+  "infra_failure_rate": 0.3333333333333333,
+  "harness_failure_rate": 0.0,
+  "threshold": 0.6,
+  "verdict": "FAIL",
+  "runs": [{"run": 1, "verdict": "FAIL_CONTROL", "exit_code": 1},{"run": 2, "verdict": "INVALID_INFRA", "exit_code": 4},{"run": 3, "verdict": "FAIL_CONTROL", "exit_code": 1}]
+}

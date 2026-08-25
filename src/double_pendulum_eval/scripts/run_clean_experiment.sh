@@ -35,6 +35,39 @@ EXTRA_ARGS=("$@")
 source /opt/ros/humble/setup.bash
 source ~/agentic_double_pendulum/install/setup.bash
 
+# INFRA-001: every one of this script's own pre-flight abort paths (exit
+# 2-5 below) used to bail out with nothing but a stderr message -- no
+# result.json at all. That forced run_repeated_experiment.sh's aggregation
+# to infer "something went wrong" purely from a nonzero exit code, with no
+# machine-readable verdict to distinguish infra failure from a harness bug.
+# Write the same result.json shape run_experiment.py itself writes (see
+# write_infra_failure_result there) so every run -- however it fails --
+# leaves one consistent, verdict-tagged artifact behind.
+write_infra_abort_result() {
+  local verdict="$1"
+  local reason="$2"
+  local out="/tmp/${SCENARIO}_result.json"
+  python3 -c "
+import json, os, sys, time
+result = {
+    'scenario': sys.argv[1],
+    'controller': sys.argv[2],
+    'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S'),
+    'n_samples_joint_states': 0,
+    'n_samples_effort': 0,
+    'metrics': None,
+    'acceptance': None,
+    'passed': False,
+    'failures': [sys.argv[4]],
+    'verdict': sys.argv[3],
+}
+tmp = sys.argv[5] + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(result, f, indent=2)
+os.replace(tmp, sys.argv[5])
+" "$SCENARIO" "$CONTROLLER" "$verdict" "$reason" "$out"
+}
+
 echo "[1/4] Cleaning up any leftover processes..."
 pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
 pkill -9 -f '[g]z sim' 2>/dev/null
@@ -57,6 +90,7 @@ else
   echo "ERROR: no /joint_states data within 60s -- aborting instead of running" >&2
   echo "  the experiment against a plant that isn't actually simulating yet." >&2
   tail -20 /tmp/gz_launch.log >&2
+  write_infra_abort_result "INVALID_INFRA" "no /joint_states data within 60s of Gazebo launch"
   kill "$GZ_PID" 2>/dev/null
   pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
   pkill -9 -f '[g]z sim' 2>/dev/null
@@ -86,6 +120,7 @@ elif [ "$CONTROLLER" = "lqr" ]; then
     echo "  running the experiment against an untuned/silent controller." >&2
     echo "  --- last lines of ctrl_launch.log ---" >&2
     tail -20 /tmp/ctrl_launch.log >&2
+    write_infra_abort_result "INVALID_INFRA" "LQR did not report ready within 150s"
     kill "$CTRL_PID" "$GZ_PID" 2>/dev/null
     pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
     pkill -9 -f '[g]z sim' 2>/dev/null
@@ -93,6 +128,7 @@ elif [ "$CONTROLLER" = "lqr" ]; then
   fi
 else
   echo "Unknown controller '$CONTROLLER' (expected pd|lqr)" >&2
+  write_infra_abort_result "FAIL_HARNESS" "unknown controller argument '$CONTROLLER' (expected pd|lqr)"
   kill "$GZ_PID" 2>/dev/null
   exit 2
 fi
@@ -125,6 +161,7 @@ if [ "$CTRL_TOPIC_READY" != "true" ]; then
   echo "  controller that may not be discovered yet." >&2
   echo "  --- last lines of ctrl_launch.log ---" >&2
   tail -20 /tmp/ctrl_launch.log >&2
+  write_infra_abort_result "INVALID_INFRA" "$CONTROLLER controller never published on /effort_controller/commands within ~60s"
   kill "$CTRL_PID" "$GZ_PID" 2>/dev/null
   pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
   pkill -9 -f '[g]z sim' 2>/dev/null

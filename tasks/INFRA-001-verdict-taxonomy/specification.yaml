@@ -1,0 +1,49 @@
+task_id: INFRA-001
+goal: >
+  CTRL-005 fixed two real measurement-validity bugs, but the harness
+  still reduces every run's outcome to a plain pass/fail bool. That
+  conflates "the controller genuinely failed to hold the target" with
+  "the experiment never actually produced a valid run at all" (zero
+  torque, zero samples, a discovery timeout) -- both counted as the same
+  FAIL in pass_rate, which is exactly what made CTRL-003/CTRL-004's low
+  pass rates untrustworthy as a verdict on control quality. Split every
+  run's outcome into 4 verdicts (PASS_CONTROL / FAIL_CONTROL /
+  INVALID_INFRA / FAIL_HARNESS), exclude the latter two from pass_rate,
+  and track infra/harness failure rates separately. Part of
+  private/NEXT_STEPS.md item 3 (Experiment Validity Layer).
+
+allowed_changes:
+  - double_pendulum_eval/metrics.py (add classify_verdict() and the 4
+    verdict constants)
+  - double_pendulum_eval/run_experiment.py (compute + record verdict in
+    result.json; write a result.json on discovery-timeout and uncaught-
+    exception paths, which previously wrote nothing at all; atomic
+    temp-file+rename write)
+  - double_pendulum_eval/scripts/run_clean_experiment.sh (every pre-flight
+    abort path now writes a verdict-tagged result.json instead of only a
+    stderr message)
+  - double_pendulum_eval/scripts/run_repeated_experiment.sh (read verdict
+    from each run's result.json; aggregate pass_rate over CONTROL-verdict
+    runs only; report infra_failure_rate/harness_failure_rate separately)
+
+forbidden_changes:
+  - this specification.yaml
+  - any scenario's acceptance criteria (per-run bounds stay exactly as-is)
+  - double_pendulum_control/pd_controller.py, lqr_controller.py (no
+    control-law changes -- this task is about verdict classification,
+    not control performance)
+
+acceptance:
+  - metrics.py self-test passes, including new classify_verdict assertions
+  - a real run_clean_experiment.sh invocation produces a result.json with
+    a verdict field matching the actual run outcome
+  - a real run_repeated_experiment.sh invocation correctly separates a
+    genuine INVALID_INFRA run from FAIL_CONTROL runs in the same batch,
+    and pass_rate is computed only over the CONTROL-verdict subset
+  - every abort path in run_clean_experiment.sh (exit 2-6) leaves a
+    verdict-tagged result.json behind, not silence
+
+regression:
+  - a single run_clean_experiment.sh invocation for both pd and lqr still
+    completes and produces a real (PASS_CONTROL or FAIL_CONTROL)
+    result.json under normal conditions

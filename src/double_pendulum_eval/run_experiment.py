@@ -24,6 +24,7 @@ import json
 import os
 import subprocess
 import time
+import traceback
 
 import rclpy
 import yaml
@@ -32,7 +33,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 
-from metrics import compute_metrics, check_acceptance
+from metrics import compute_metrics, check_acceptance, classify_verdict, VERDICT_INVALID_INFRA, VERDICT_FAIL_HARNESS
 
 JOINT_ORDER = ["joint1", "joint2"]
 
@@ -64,6 +65,43 @@ def clear_wrench(world: str, link: str, model: str):
     cmd = ["gz", "topic", "-t", f"/world/{world}/wrench/clear",
            "-m", "gz.msgs.Entity", "-p", req]
     subprocess.run(cmd, check=True)
+
+
+def write_result_json(output_path: str, result: dict):
+    """INFRA-003 (partial): atomic write via temp-file + rename, so a
+    process killed mid-write (kill -9 during teardown, disk full, etc)
+    never leaves a partially-written/corrupt result.json for downstream
+    aggregation to trip over."""
+    output_path = os.path.abspath(output_path)
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    tmp_path = output_path + f".tmp.{os.getpid()}"
+    with open(tmp_path, "w") as f:
+        json.dump(result, f, indent=2)
+    os.replace(tmp_path, output_path)
+
+
+def write_infra_failure_result(output_path: str, scenario_name: str, controller_name: str,
+                                verdict: str, reason: str):
+    """Used for failures that never reach ExperimentRunner._finalize (a
+    discovery timeout, an uncaught exception) so the caller (and
+    run_repeated_experiment.sh's aggregation) always finds a result.json
+    with a verdict field, regardless of which stage failed. Before
+    INFRA-001 this path wrote nothing at all, which forced downstream
+    tooling to infer infra failure from a missing file instead of reading
+    it directly."""
+    result = {
+        "scenario": scenario_name,
+        "controller": controller_name,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "n_samples_joint_states": 0,
+        "n_samples_effort": 0,
+        "metrics": None,
+        "acceptance": None,
+        "passed": False,
+        "failures": [reason],
+        "verdict": verdict,
+    }
+    write_result_json(output_path, result)
 
 
 class ExperimentRunner(Node):
@@ -162,30 +200,38 @@ class ExperimentRunner(Node):
             settle_band_deg=self.settle_band_deg,
         )
         passed, failures = check_acceptance(metrics, self.scenario["acceptance"])
+        n_samples_joint_states = len(self.rec_t)
+        n_samples_effort = len(self.rec_tau1)
+        verdict = classify_verdict(metrics, passed, n_samples_joint_states, n_samples_effort)
 
         result = {
             "scenario": self.scenario["name"],
             "controller": self.controller_name,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "n_samples_joint_states": len(self.rec_t),
-            "n_samples_effort": len(self.rec_tau1),
+            "n_samples_joint_states": n_samples_joint_states,
+            "n_samples_effort": n_samples_effort,
             "metrics": metrics.to_dict(),
             "acceptance": self.scenario["acceptance"],
             "passed": passed,
             "failures": failures,
+            "verdict": verdict,
         }
 
-        os.makedirs(os.path.dirname(os.path.abspath(self.output_path)) or ".", exist_ok=True)
-        with open(self.output_path, "w") as f:
-            json.dump(result, f, indent=2)
+        write_result_json(self.output_path, result)
 
         status = "PASS" if passed else "FAIL"
-        self.get_logger().info(f"=== {status} === {self.scenario['name']} -> {self.output_path}")
+        self.get_logger().info(f"=== {status} (verdict={verdict}) === {self.scenario['name']} -> {self.output_path}")
         self.get_logger().info(json.dumps(metrics.to_dict(), indent=2))
         if failures:
             self.get_logger().warn(f"failures: {failures}")
 
-        self._exit_code = 0 if passed else 1
+        # INFRA-001: a run that completed and technically "passed"
+        # acceptance but was classified INVALID_INFRA (e.g. zero torque
+        # the whole time, which check_acceptance has no way to see as a
+        # rule) must not exit 0 -- exit code still drives
+        # run_repeated_experiment.sh's legacy pass-counting fallback for
+        # any external caller that doesn't read verdict from result.json.
+        self._exit_code = 0 if verdict == "PASS_CONTROL" else 1
 
 
 def main():
@@ -210,19 +256,43 @@ def main():
         while rclpy.ok() and not node._finished:
             rclpy.spin_once(node, timeout_sec=0.05)
             if not node.rec_t and (time.time() - start_wall) > discovery_timeout_s:
-                node.get_logger().error(
+                reason = (
                     f"no /joint_states received within {discovery_timeout_s}s of "
                     f"startup -- aborting (infra failure, not a physics result). "
                     f"See CTRL-005: the schedule intentionally does not start "
                     f"until real data arrives, so this is a genuine discovery "
                     f"failure, not a slow scenario."
                 )
+                node.get_logger().error(reason)
+                write_infra_failure_result(output_path, args.scenario, args.controller,
+                                            VERDICT_INVALID_INFRA, reason)
                 node.destroy_node()
                 if rclpy.ok():
                     rclpy.shutdown()
                 raise SystemExit(6)
     except KeyboardInterrupt:
-        pass
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+        raise SystemExit(130)
+    except SystemExit:
+        raise
+    except Exception:
+        # INFRA-001: FAIL_HARNESS -- the harness/tooling itself broke
+        # (an unhandled exception in our own code), which is a distinct
+        # failure mode from both a real control failure and an infra
+        # discovery timeout. Must not be silently swallowed into an exit
+        # code with no artifact -- write what we know and re-raise so the
+        # process still exits non-zero.
+        reason = "uncaught exception in run_experiment.py: " + traceback.format_exc()
+        node.get_logger().error(reason)
+        write_infra_failure_result(output_path, args.scenario, args.controller,
+                                    VERDICT_FAIL_HARNESS, reason)
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+        raise SystemExit(7)
+
     exit_code = getattr(node, "_exit_code", 1)
     node.destroy_node()
     if rclpy.ok():

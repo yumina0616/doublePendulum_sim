@@ -1,0 +1,14 @@
+{
+  "scenario": "nominal_balance",
+  "controller": "pd",
+  "timestamp": "2026-08-25T11:57:46",
+  "n_samples_joint_states": 0,
+  "n_samples_effort": 0,
+  "metrics": null,
+  "acceptance": null,
+  "passed": false,
+  "failures": [
+    "no /joint_states data within 60s of Gazebo launch"
+  ],
+  "verdict": "INVALID_INFRA"
+}

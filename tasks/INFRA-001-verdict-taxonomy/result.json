@@ -1,0 +1,46 @@
+{
+  "task_id": "INFRA-001",
+  "goal": "Split run outcomes into a 4-way verdict taxonomy (PASS_CONTROL/FAIL_CONTROL/INVALID_INFRA/FAIL_HARNESS) so pass_rate is no longer poisoned by infra failures",
+  "timestamp": "2026-08-25T12:10:00Z",
+  "changed_files": [
+    "double_pendulum_eval/metrics.py (classify_verdict + verdict constants)",
+    "double_pendulum_eval/run_experiment.py (verdict field, atomic write, result.json on discovery-timeout and uncaught-exception paths)",
+    "double_pendulum_eval/scripts/run_clean_experiment.sh (verdict-tagged result.json on every pre-flight abort path)",
+    "double_pendulum_eval/scripts/run_repeated_experiment.sh (aggregate by verdict, pass_rate over control runs only, separate infra/harness failure rates)"
+  ],
+  "verification": {
+    "single_run": {
+      "controller": "pd",
+      "scenario": "nominal_balance",
+      "verdict": "FAIL_CONTROL",
+      "passed": false,
+      "n_samples_joint_states": 875,
+      "failures": ["settling_time_q1_s=3.2099 exceeds max 3.0", "settling_time_q2_s=3.2797 exceeds max 3.0"]
+    },
+    "n3_repeated_run": {
+      "controller": "pd",
+      "scenario": "nominal_balance",
+      "n_runs": 3,
+      "n_pass_control": 0,
+      "n_fail_control": 2,
+      "n_invalid_infra": 1,
+      "n_fail_harness": 0,
+      "pass_rate_over_control_runs": 0.0,
+      "infra_failure_rate": 0.3333333333333333,
+      "verdict": "FAIL",
+      "note": "run 2 was correctly auto-classified INVALID_INFRA (no /joint_states within 60s) and excluded from pass_rate, instead of being silently counted as a control failure -- exactly the case this task was built to catch."
+    }
+  },
+  "acceptance_checks": {
+    "metrics_self_test_passes_with_new_verdict_assertions": true,
+    "real_run_produces_verdict_tagged_result_json": true,
+    "repeated_run_separates_infra_failure_from_control_failures": true,
+    "every_abort_path_leaves_verdict_tagged_artifact": true
+  },
+  "regression_checks": {
+    "single_clean_pd_run_still_completes_and_produces_real_verdict": true,
+    "single_clean_lqr_run_not_separately_reverified_this_task": "not re-run this task -- LQR path's abort branches (exit 3) were code-reviewed and share the same write_infra_abort_result() call, not independently exercised live"
+  },
+  "passed": true,
+  "notes": "This task only makes pass_rate measurement trustworthy -- it does not close the settling-time gain-tuning gap CTRL-005 already documented as the honest remaining open problem. INFRA-002 (full 6-condition readiness state machine, replacing more of run_clean_experiment.sh's ad hoc sleeps/polls) and INFRA-003 (run isolation: run_id, per-run ROS_DOMAIN_ID, environment manifest) remain separate, not-yet-started tasks."
+}
