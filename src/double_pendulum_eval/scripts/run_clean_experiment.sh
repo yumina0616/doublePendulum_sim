@@ -68,6 +68,92 @@ os.replace(tmp, sys.argv[5])
 " "$SCENARIO" "$CONTROLLER" "$verdict" "$reason" "$out"
 }
 
+# INFRA-002: replaces a family of ad hoc sleeps/single-shot polls with
+# explicit checks against the actual readiness signals NEXT_STEPS.md's
+# Experiment Validity Layer section lists (real CLI output shapes
+# confirmed by direct probing, not assumed):
+#   - /clock advancing: `ros2 topic echo /clock --once` yields
+#     `clock:\n  sec: N\n  nanosec: M`; read twice ~1s apart and require
+#     the nanosecond-resolution value to have strictly increased.
+#   - controller 'active': `ros2 control list_controllers` output is
+#     ANSI-colored; strip escape codes before grepping for
+#     "<name> ... active" on one line.
+#   - pub+sub actually connected (not just "a publisher exists somewhere"):
+#     `ros2 topic info --verbose <topic>` reports "Publisher count: N" and
+#     "Subscription count: N" as separate lines -- require both >= 1.
+# Condition 3/6 from NEXT_STEPS.md ("not stale from a previous run" /
+# "timestamp after this run's start") is not implemented as a separate
+# timestamp check: this script already guarantees it structurally by
+# fully pkilling and relaunching Gazebo (and therefore resetting the sim
+# clock to 0) before every single run, so no prior run's messages can
+# physically still be in flight. Documented here rather than silently
+# skipped.
+
+read_clock_ns() {
+  timeout 3 ros2 topic echo /clock --once 2>/dev/null | awk '
+    /^clock:/ { f=1; next }
+    f && /^[[:space:]]*sec:/ { sec=$2 }
+    f && /^[[:space:]]*nanosec:/ { print (sec+0)*1000000000+($2+0); exit }
+  '
+}
+
+wait_for_clock_advancing() {
+  local timeout_s="$1"
+  local waited=0
+  local t1 t2
+  while [ "$waited" -lt "$timeout_s" ]; do
+    t1=$(read_clock_ns)
+    if [ -n "$t1" ]; then
+      sleep 1
+      t2=$(read_clock_ns)
+      if [ -n "$t2" ] && [ "$t2" -gt "$t1" ]; then
+        echo "  /clock is advancing (${t1}ns -> ${t2}ns)"
+        return 0
+      fi
+    else
+      sleep 1
+    fi
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+wait_for_controller_active() {
+  local name="$1"
+  local timeout_s="$2"
+  local waited=0
+  while [ "$waited" -lt "$timeout_s" ]; do
+    if timeout 3 ros2 control list_controllers 2>/dev/null \
+        | sed -E 's/\x1b\[[0-9;]*m//g' \
+        | grep -qE "^${name}[[:space:]].*[[:space:]]active[[:space:]]*$"; then
+      echo "  controller '$name' is active (after ${waited}s)"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+wait_for_topic_pub_and_sub() {
+  local topic="$1"
+  local timeout_s="$2"
+  local waited=0
+  local info pub_count sub_count
+  while [ "$waited" -lt "$timeout_s" ]; do
+    info=$(timeout 3 ros2 topic info --verbose "$topic" 2>/dev/null)
+    pub_count=$(echo "$info" | grep -oE "Publisher count: [0-9]+" | grep -oE "[0-9]+")
+    sub_count=$(echo "$info" | grep -oE "Subscription count: [0-9]+" | grep -oE "[0-9]+")
+    if [ -n "$pub_count" ] && [ -n "$sub_count" ] && [ "$pub_count" -ge 1 ] && [ "$sub_count" -ge 1 ]; then
+      echo "  $topic has $pub_count publisher(s) and $sub_count subscriber(s) connected (after ${waited}s)"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
 echo "[1/4] Cleaning up any leftover processes..."
 pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
 pkill -9 -f '[g]z sim' 2>/dev/null
@@ -78,9 +164,18 @@ sleep 2
 echo "[2/4] Launching a fresh Gazebo simulation (headless:=$HEADLESS)..."
 ros2 launch double_pendulum_description spawn.launch.py headless:="$HEADLESS" > /tmp/gz_launch.log 2>&1 &
 GZ_PID=$!
-sleep 5  # let the graph settle before subscribing -- `ros2 topic echo --once`
-         # called immediately after launch can race DDS discovery and hang
-         # the full 60s even though the topic starts flowing a few seconds in
+
+echo "  waiting for /clock to actually be advancing (proves the sim is running, not just launched)..."
+if ! wait_for_clock_advancing 30; then
+  echo "ERROR: /clock never showed advancing sim time within 30s -- aborting instead of" >&2
+  echo "  running the experiment against a plant that isn't actually simulating yet." >&2
+  tail -20 /tmp/gz_launch.log >&2
+  write_infra_abort_result "INVALID_INFRA" "/clock did not show advancing sim time within 30s of Gazebo launch"
+  kill "$GZ_PID" 2>/dev/null
+  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
+  pkill -9 -f '[g]z sim' 2>/dev/null
+  exit 4
+fi
 
 echo "  waiting for /joint_states to actually publish data (topic existing isn't enough --"
 echo "  GUI mode in particular can take a while past that before physics/bridge is really live)..."
@@ -96,7 +191,16 @@ else
   pkill -9 -f '[g]z sim' 2>/dev/null
   exit 4
 fi
-sleep 2  # let controller_manager finish loading joint_state_broadcaster + effort_controller
+
+echo "  waiting for joint_state_broadcaster and effort_controller to both be 'active'..."
+if ! wait_for_controller_active "joint_state_broadcaster" 20 || ! wait_for_controller_active "effort_controller" 20; then
+  echo "ERROR: controller_manager never reported both controllers active within 20s" >&2
+  write_infra_abort_result "INVALID_INFRA" "controller_manager did not report joint_state_broadcaster+effort_controller active within 20s"
+  kill "$GZ_PID" 2>/dev/null
+  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
+  pkill -9 -f '[g]z sim' 2>/dev/null
+  exit 4
+fi
 
 echo "[3/4] Starting $CONTROLLER controller..."
 if [ "$CONTROLLER" = "pd" ]; then
@@ -133,35 +237,22 @@ else
   exit 2
 fi
 
-# CTRL-005: neither branch above actually confirms the controller node's
-# own /joint_states subscription and /effort_controller/commands publisher
-# have completed ROS graph discovery -- PD relied on a blind `sleep 2`
-# (no check at all), and LQR's "LQR ready" log line is printed BEFORE
-# lqr_node.py creates its subscription/publisher/timer, so it only proves
-# gain design finished, not that discovery has. This is the exact same bug
-# CLASS CTRL-004 already found and fixed for /joint_states (zero-delay
-# subscribe racing DDS discovery) -- just never applied here. Root-cause
-# candidate for CTRL-003's still-unexplained PD variance: if the
-# controller's publisher isn't discovered yet when the disturbance hits,
-# real torque output is 0 for part or all of the run (matches CTRL-004's
-# observed max_abs_tau1_nm=0.0 catastrophic-failure runs). Actively confirm
-# instead of guessing a sleep duration.
-echo "  waiting for $CONTROLLER's /effort_controller/commands publisher to actually be discovered..."
-CTRL_TOPIC_READY=false
-for i in $(seq 1 30); do
-  if timeout 2 ros2 topic echo /effort_controller/commands --once > /dev/null 2>&1; then
-    echo "  $CONTROLLER controller is actively publishing (confirmed after ${i}s)"
-    CTRL_TOPIC_READY=true
-    break
-  fi
-done
-if [ "$CTRL_TOPIC_READY" != "true" ]; then
-  echo "ERROR: $CONTROLLER controller never published on /effort_controller/commands" >&2
-  echo "  within ~60s -- aborting instead of running the experiment against a" >&2
-  echo "  controller that may not be discovered yet." >&2
+# CTRL-005/INFRA-002: confirm the controller's own /effort_controller/commands
+# publisher AND the ros2_control subscriber are both actually connected --
+# stronger than the old check (a bare `ros2 topic echo --once` only proves
+# *a* publisher exists somewhere, not that ros2_control's own subscription
+# has completed discovery on it too). If the controller's publisher isn't
+# discovered yet when the disturbance hits, real torque output is 0 for
+# part or all of the run (matches CTRL-004's observed max_abs_tau1_nm=0.0
+# catastrophic-failure runs).
+echo "  waiting for $CONTROLLER's /effort_controller/commands publisher and subscriber to both connect..."
+if ! wait_for_topic_pub_and_sub "/effort_controller/commands" 30; then
+  echo "ERROR: $CONTROLLER controller's /effort_controller/commands never showed both a" >&2
+  echo "  publisher and subscriber connected within 30s -- aborting instead of running" >&2
+  echo "  the experiment against a controller that may not be fully discovered yet." >&2
   echo "  --- last lines of ctrl_launch.log ---" >&2
   tail -20 /tmp/ctrl_launch.log >&2
-  write_infra_abort_result "INVALID_INFRA" "$CONTROLLER controller never published on /effort_controller/commands within ~60s"
+  write_infra_abort_result "INVALID_INFRA" "$CONTROLLER controller's /effort_controller/commands never showed both pub+sub connected within 30s"
   kill "$CTRL_PID" "$GZ_PID" 2>/dev/null
   pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
   pkill -9 -f '[g]z sim' 2>/dev/null

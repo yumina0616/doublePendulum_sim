@@ -1,0 +1,42 @@
+task_id: INFRA-002
+goal: >
+  private/NEXT_STEPS.md item 3-2: replace run_clean_experiment.sh's
+  remaining ad hoc sleeps/single-shot polls (a blind `sleep 5` after
+  Gazebo launch; trusting joint_state_broadcaster/effort_controller are
+  loaded without checking; the CTRL-005 effort-topic check only proving
+  "a publisher exists somewhere") with explicit readiness checks against
+  real signals: /clock advancing, ros2 control list_controllers reporting
+  'active', and ros2 topic info --verbose showing both a publisher AND a
+  subscriber connected. Confirmed CLI output formats by direct probing
+  against a real running Gazebo instance before writing the checks, not
+  assumed.
+
+allowed_changes:
+  - double_pendulum_eval/scripts/run_clean_experiment.sh (readiness gate:
+    wait_for_clock_advancing, wait_for_controller_active,
+    wait_for_topic_pub_and_sub, replacing the old sleep 5 and upgrading
+    the CTRL-005 effort-topic echo check)
+
+forbidden_changes:
+  - this specification.yaml
+  - any scenario's acceptance criteria
+  - double_pendulum_control/pd_controller.py, lqr_controller.py (no
+    control-law changes)
+  - double_pendulum_eval/run_experiment.py, metrics.py (INFRA-001's
+    verdict taxonomy, not touched by this task)
+
+acceptance:
+  - a real pd/nominal_balance run completes through the new readiness
+    gate with all checks passing and reaching a genuine PASS_CONTROL/
+    FAIL_CONTROL result
+  - a real lqr/nominal_balance run completes through the same gate
+    (different code path -- LQR gain design takes ~1min before the
+    controller node's publisher even exists)
+  - the new /clock-advancing check demonstrably catches a real infra
+    failure (not just a synthetic/simulated one) and correctly classifies
+    it INVALID_INFRA per INFRA-001's taxonomy, instead of silently
+    proceeding with a broken run
+
+regression:
+  - both pd and lqr paths through run_clean_experiment.sh still reach
+    [4/4] and produce a real result.json under normal conditions

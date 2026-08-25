@@ -1,0 +1,44 @@
+{
+  "task_id": "INFRA-002",
+  "goal": "Replace run_clean_experiment.sh's remaining ad hoc sleeps/single-shot polls with explicit readiness checks (clock advancing, controllers active, pub+sub connected)",
+  "timestamp": "2026-08-25T12:15:00Z",
+  "changed_files": [
+    "double_pendulum_eval/scripts/run_clean_experiment.sh (wait_for_clock_advancing, wait_for_controller_active, wait_for_topic_pub_and_sub)"
+  ],
+  "verification": {
+    "pd_nominal_balance": {
+      "clock_advancing_confirmed_after_s": 2,
+      "controllers_active_confirmed_after_s": 0,
+      "pub_sub_connected_confirmed_after_s": 1,
+      "verdict": "FAIL_CONTROL",
+      "note": "genuine gain-tuning gap already documented by CTRL-005, not an infra artifact"
+    },
+    "lqr_nominal_balance_attempt_1": {
+      "outcome": "clock-advancing check correctly caught a real infra failure",
+      "verdict": "INVALID_INFRA",
+      "reason": "/clock did not show advancing sim time within 30s of Gazebo launch",
+      "root_cause": "34 stale FastRTPS /dev/shm entries accumulated from this session's own repeated launch/kill cycles -- the exact factor CTRL-005 already documented",
+      "exit_code": 4
+    },
+    "lqr_nominal_balance_attempt_2": {
+      "after": "manually cleared stale /dev/shm/fastrtps_* entries and 2 leftover robot_state_publisher processes (investigation-only, not baked into the shared script)",
+      "clock_advancing_confirmed": true,
+      "controllers_active_confirmed": true,
+      "lqr_ready_after_s": 54,
+      "pub_sub_connected_confirmed": true,
+      "verdict": "FAIL_CONTROL",
+      "note": "settling_time_q1_s=inf -- a genuine LQR gain-quality result, unrelated to infra"
+    }
+  },
+  "acceptance_checks": {
+    "real_pd_run_through_new_gate_reaches_genuine_verdict": true,
+    "real_lqr_run_through_new_gate_reaches_genuine_verdict": true,
+    "new_check_demonstrably_caught_a_real_infra_failure": true
+  },
+  "regression_checks": {
+    "pd_path_still_reaches_stage_4_of_4": true,
+    "lqr_path_still_reaches_stage_4_of_4": true
+  },
+  "passed": true,
+  "notes": "This task's own verification run incidentally produced the strongest direct evidence yet that CTRL-005's /dev/shm factor is real: the new clock-advancing check caught it live, on a real run, and correctly classified it INVALID_INFRA instead of silently proceeding into a broken run. Deliberately did not implement NEXT_STEPS.md's readiness conditions 3/6 (stale-message/timestamp checks) -- not needed given this script's existing full-relaunch-per-run architecture, which already makes stale cross-run data structurally impossible. INFRA-003 (run isolation) remains a separate, not-yet-started task."
+}
