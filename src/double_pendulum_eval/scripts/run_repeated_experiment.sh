@@ -3,18 +3,20 @@
 # times and require a pass RATE, not a single pass, before declaring a
 # verdict.
 #
-# INFRA-001: pass_rate is now computed only over runs that actually
-# completed a genuine control experiment (verdict PASS_CONTROL/
-# FAIL_CONTROL), reading the per-run verdict out of each run's own
-# result.json instead of trusting the shell exit code alone. Runs that
-# never really exercised the controller (INVALID_INFRA: discovery
-# timeouts, zero-torque runs, etc) or that hit a harness bug
-# (FAIL_HARNESS) are excluded from the pass_rate denominator and reported
-# separately as infra_failure_rate / harness_failure_rate. Before this,
-# a run that aborted before Gazebo was even ready counted as a plain
-# "FAIL" indistinguishable from the controller genuinely losing balance --
-# which is exactly what made CTRL-003/CTRL-004's low pass rates
-# untrustworthy as a verdict on control quality.
+# INFRA-001: pass_rate is computed only over runs that actually completed
+# a genuine control experiment (verdict PASS_CONTROL/FAIL_CONTROL),
+# reading the per-run verdict out of each run's own result.json. Runs
+# that never really exercised the controller (INVALID_INFRA) or hit a
+# harness bug (FAIL_HARNESS) are excluded from the pass_rate denominator
+# and reported separately as infra_failure_rate/harness_failure_rate.
+#
+# INFRA-003: each batch gets its own batch_id and an isolated
+# results/raw/repeated_<batch_id>/ directory -- earlier batches are never
+# overwritten (unlike the old fixed /tmp/repeated_<scenario>_summary.json
+# path, which every invocation used to clobber). Per-run ROS_DOMAIN_ID
+# rotation was tried and reverted -- see run_clean_experiment.sh's own
+# header comment; it reliably broke /clock discovery in this project's
+# WSL2 + Gazebo 8.14 + Humble combination.
 #
 # Usage:
 #   run_repeated_experiment.sh <pd|lqr> <scenario> [N] [threshold] [--gui] [-- extra ros2 args]
@@ -30,6 +32,7 @@
 set -o pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$HERE" && git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/agentic_double_pendulum")"
 
 CONTROLLER="${1:?usage: run_repeated_experiment.sh <pd|lqr> <scenario> [N] [threshold] [--gui] [-- extra args]}"
 SCENARIO="${2:?usage: run_repeated_experiment.sh <pd|lqr> <scenario> [N] [threshold] [--gui] [-- extra args]}"
@@ -49,7 +52,12 @@ if [ "${1:-}" = "--gui" ]; then
   shift
 fi
 
+BATCH_ID="${CONTROLLER}_${SCENARIO}_$(date -u +%Y%m%dT%H%M%SZ)_$$"
+BATCH_DIR="$REPO_ROOT/results/raw/repeated_$BATCH_ID"
+mkdir -p "$BATCH_DIR"
+
 echo "Repeated experiment: controller=$CONTROLLER scenario=$SCENARIO N=$N threshold=$THRESHOLD"
+echo "Batch id: $BATCH_ID  ->  $BATCH_DIR"
 echo
 
 # Reads the verdict field out of a run's result.json. Falls back to
@@ -86,11 +94,13 @@ for i in $(seq 1 "$N"); do
   echo "=================================================================="
   echo "Run $i/$N"
   echo "=================================================================="
-  rm -f "/tmp/${SCENARIO}_result.json"
-  bash "$HERE/run_clean_experiment.sh" "$CONTROLLER" "$SCENARIO" "${GUI_FLAG[@]}" "$@"
+  RUN_ID="run${i}"
+  RUN_DIR="$BATCH_DIR/$RUN_ID"
+  DPEND_RUN_ID="$RUN_ID" DPEND_RUN_DIR="$RUN_DIR" \
+    bash "$HERE/run_clean_experiment.sh" "$CONTROLLER" "$SCENARIO" "${GUI_FLAG[@]}" "$@"
   code=$?
 
-  RESULT_FILE="/tmp/${SCENARIO}_result.json"
+  RESULT_FILE="$RUN_DIR/result.json"
   verdict_i=$(read_verdict "$RESULT_FILE" "$code")
   case "$verdict_i" in
     PASS_CONTROL) N_PASS_CONTROL=$((N_PASS_CONTROL + 1)) ;;
@@ -101,13 +111,7 @@ for i in $(seq 1 "$N"); do
   echo "  run $i verdict: $verdict_i (exit_code=$code)"
 
   if [ -n "$RESULTS_JSON" ]; then RESULTS_JSON+=","; fi
-  RESULTS_JSON+="{\"run\": $i, \"verdict\": \"$verdict_i\", \"exit_code\": $code}"
-  # keep each run's own result.json (not just the verdict) so later
-  # analysis can compare failure SEVERITY across runs, not just the
-  # aggregate verdict
-  if [ -f "$RESULT_FILE" ]; then
-    cp "$RESULT_FILE" "/tmp/repeated_${SCENARIO}_run${i}_result.json"
-  fi
+  RESULTS_JSON+="{\"run\": $i, \"verdict\": \"$verdict_i\", \"exit_code\": $code, \"result_file\": \"$RESULT_FILE\"}"
   echo
 done
 
@@ -141,10 +145,11 @@ echo "Infra failure rate: $INFRA_FAILURE_RATE   Harness failure rate: $HARNESS_F
 echo "Verdict: $VERDICT"
 echo "=================================================================="
 
-OUTPUT_PATH="/tmp/repeated_${SCENARIO}_summary.json.tmp"
-FINAL_OUTPUT_PATH="/tmp/repeated_${SCENARIO}_summary.json"
-cat > "$OUTPUT_PATH" <<EOF
+SUMMARY_PATH="$BATCH_DIR/summary.json"
+SUMMARY_TMP="$SUMMARY_PATH.tmp"
+cat > "$SUMMARY_TMP" <<EOF
 {
+  "batch_id": "$BATCH_ID",
   "controller": "$CONTROLLER",
   "scenario": "$SCENARIO",
   "n_runs": $N,
@@ -161,8 +166,12 @@ cat > "$OUTPUT_PATH" <<EOF
   "runs": [$RESULTS_JSON]
 }
 EOF
-mv "$OUTPUT_PATH" "$FINAL_OUTPUT_PATH"
-echo "Summary written to $FINAL_OUTPUT_PATH"
+mv "$SUMMARY_TMP" "$SUMMARY_PATH"
+# best-effort legacy mirror -- some older tooling/manual workflows still
+# look at the fixed /tmp path; the isolated batch dir above is the source
+# of truth and is never overwritten by a later batch.
+cp "$SUMMARY_PATH" "/tmp/repeated_${SCENARIO}_summary.json" 2>/dev/null
+echo "Summary written to $SUMMARY_PATH"
 
 if [ "$VERDICT_BOOL" = "true" ]; then
   exit 0

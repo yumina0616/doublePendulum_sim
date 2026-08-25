@@ -1,0 +1,52 @@
+{
+  "task_id": "INFRA-003",
+  "goal": "Isolate run/batch output (run_id-based results/raw/ directories), record an environment manifest, unify process teardown, and per-run ROS_DOMAIN_ID if verified working",
+  "timestamp": "2026-08-25T13:50:00Z",
+  "changed_files": [
+    "double_pendulum_eval/scripts/run_clean_experiment.sh (run_id/results/raw/ output dir, environment_manifest.json, unified teardown_all())",
+    "double_pendulum_eval/scripts/run_repeated_experiment.sh (batch_id/results/raw/repeated_ dir, per-run subdirectories)",
+    ".gitignore (results/)"
+  ],
+  "verification": {
+    "single_run": {
+      "run_id": "pd_nominal_balance_20260825T044617Z_6143",
+      "output_dir": "results/raw/pd_nominal_balance_20260825T044617Z_6143/",
+      "manifest_correct": true,
+      "manifest_sample": {
+        "ros_distro": "humble",
+        "gazebo_version": "Gazebo Sim, version 8.14.0",
+        "max_step_size_s": "0.001",
+        "real_time_factor": "1.0",
+        "ros_domain_id": "unknown"
+      }
+    },
+    "n2_repeated_batch": {
+      "batch_id": "pd_nominal_balance_20260825T044655Z_6658",
+      "n_pass_control": 0,
+      "n_fail_control": 2,
+      "n_invalid_infra": 0,
+      "n_fail_harness": 0,
+      "verdict": "FAIL",
+      "directory_structure_correct": true
+    },
+    "process_cleanliness_after_batch": true,
+    "domain_rotation_test": {
+      "domain_0_default": "/clock available after 5s",
+      "domain_149_rotated": "/clock never available within 45s",
+      "conclusion": "reverted -- rotating ROS_DOMAIN_ID per run breaks discovery entirely in this project's WSL2 + Gazebo 8.14 + Humble environment",
+      "decision": "kept ROS_DOMAIN_ID unset by default; documented in both scripts and here rather than silently dropped"
+    }
+  },
+  "acceptance_checks": {
+    "single_run_isolated_output_dir": true,
+    "repeated_batch_isolated_directories": true,
+    "unified_teardown_function": true,
+    "domain_rotation_tested_before_trusting": true
+  },
+  "regression_checks": {
+    "pd_path_still_reaches_stage_4_of_4": true,
+    "lqr_path_not_re-verified_this_task": "code-reviewed only -- shares the same teardown_all()/RUN_DIR logic already verified live in INFRA-001/INFRA-002 for the lqr path"
+  },
+  "passed": true,
+  "notes": "The teardown unification fixed a real bug INFRA-002's own verification exposed (2 leaked robot_state_publisher processes from an abort path missing pkill entries the success path had). The ROS_DOMAIN_ID rotation NEXT_STEPS.md asked for was implemented, tested, found to break /clock discovery entirely in this environment, and reverted -- documented rather than silently dropped, and flagged as worth retrying under NEXT_STEPS.md item 5's future distro comparison. This completes NEXT_STEPS.md item 3 (INFRA-001/002/003) as a whole."
+}

@@ -1,0 +1,17 @@
+{
+  "batch_id": "pd_nominal_balance_20260825T044655Z_6658",
+  "controller": "pd",
+  "scenario": "nominal_balance",
+  "n_runs": 2,
+  "n_pass_control": 0,
+  "n_fail_control": 2,
+  "n_invalid_infra": 0,
+  "n_fail_harness": 0,
+  "n_control_runs": 2,
+  "pass_rate": 0.0,
+  "infra_failure_rate": 0.0,
+  "harness_failure_rate": 0.0,
+  "threshold": 0.6,
+  "verdict": "FAIL",
+  "runs": [{"run": 1, "verdict": "FAIL_CONTROL", "exit_code": 1, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_pd_nominal_balance_20260825T044655Z_6658/run1/result.json"},{"run": 2, "verdict": "FAIL_CONTROL", "exit_code": 1, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_pd_nominal_balance_20260825T044655Z_6658/run2/result.json"}]
+}

@@ -10,3 +10,8 @@ src/gz_ros2_control/
 # python
 __pycache__/
 *.pyc
+
+# INFRA-003: per-run experiment output (results/raw/<run_id>/) -- generated
+# data, not source. Evidence worth keeping long-term belongs under a
+# specific task's tasks/<TASK-ID>/evidence/, copied there deliberately.
+results/

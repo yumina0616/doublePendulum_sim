@@ -19,6 +19,25 @@
 # Examples:
 #   run_clean_experiment.sh pd nominal_balance
 #   run_clean_experiment.sh lqr nominal_balance --gui -- --ros-args -p q1d:=15.0 -p q2d:=15.0
+#
+# INFRA-003 (run isolation): every invocation gets its own run_id and
+# output directory (results/raw/<run_id>/, never overwritten by a later
+# run), plus an environment_manifest.json recording ROS distro/Gazebo
+# version/physics settings alongside the result. Set DPEND_RUN_ID /
+# DPEND_RUN_DIR to override either explicitly (used by
+# run_repeated_experiment.sh to isolate each of its N runs).
+#
+# NOT done: per-run ROS_DOMAIN_ID rotation, despite NEXT_STEPS.md asking
+# for it. Tested directly: under this project's WSL2 + Gazebo 8.14 +
+# ROS2 Humble combination, launching with any non-default ROS_DOMAIN_ID
+# reliably breaks /clock discovery entirely (never became available in
+# 45s of polling, vs 5s under the default domain 0) -- some part of the
+# gz_ros2_control / ros_gz_bridge chain here doesn't propagate a
+# non-zero domain id the way a plain ROS2 node would. Rotating domains
+# would have made every run INVALID_INFRA, which defeats the entire
+# point of a "run isolation" feature. Documented rather than silently
+# dropped -- worth retrying if this project ever moves off this exact
+# distro/Gazebo combination (see NEXT_STEPS.md item 5, ENV-001).
 set -o pipefail
 
 CONTROLLER="${1:?usage: run_clean_experiment.sh <pd|lqr> <scenario> [--gui] [-- extra args]}"
@@ -32,21 +51,59 @@ fi
 if [ "${1:-}" = "--" ]; then shift; fi
 EXTRA_ARGS=("$@")
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$HERE" && git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/agentic_double_pendulum")"
+
+RUN_ID="${DPEND_RUN_ID:-${CONTROLLER}_${SCENARIO}_$(date -u +%Y%m%dT%H%M%SZ)_$$}"
+RUN_DIR="${DPEND_RUN_DIR:-$REPO_ROOT/results/raw/$RUN_ID}"
+mkdir -p "$RUN_DIR"
+OUTPUT_JSON="$RUN_DIR/result.json"
+
 source /opt/ros/humble/setup.bash
 source ~/agentic_double_pendulum/install/setup.bash
 
-# INFRA-001: every one of this script's own pre-flight abort paths (exit
-# 2-5 below) used to bail out with nothing but a stderr message -- no
-# result.json at all. That forced run_repeated_experiment.sh's aggregation
-# to infer "something went wrong" purely from a nonzero exit code, with no
-# machine-readable verdict to distinguish infra failure from a harness bug.
+echo "  run_id=$RUN_ID  ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-<default>}  output=$OUTPUT_JSON"
+
+write_environment_manifest() {
+  local world_sdf="$REPO_ROOT/src/double_pendulum_description/launch/empty_world.sdf"
+  local max_step real_time_factor
+  max_step=$(grep -oE '<max_step_size>[^<]+' "$world_sdf" 2>/dev/null | grep -oE '[0-9.]+')
+  real_time_factor=$(grep -oE '<real_time_factor>[^<]+' "$world_sdf" 2>/dev/null | grep -oE '[0-9.]+')
+  python3 -c "
+import json, os, subprocess, sys, time
+gz_version = subprocess.run(['gz', 'sim', '--version'], capture_output=True, text=True).stdout.splitlines()
+gz_version = gz_version[0] if gz_version else 'unknown'
+manifest = {
+    'run_id': sys.argv[1],
+    'controller': sys.argv[2],
+    'scenario': sys.argv[3],
+    'headless': sys.argv[4],
+    'ros_distro': os.environ.get('ROS_DISTRO', 'unknown'),
+    'ros_domain_id': os.environ.get('ROS_DOMAIN_ID', 'unknown'),
+    'gazebo_version': gz_version,
+    'use_sim_time': True,
+    'physics_engine': 'ode',
+    'max_step_size_s': sys.argv[5] or None,
+    'real_time_factor': sys.argv[6] or None,
+    'timestamp_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+}
+tmp = sys.argv[7] + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(manifest, f, indent=2)
+os.replace(tmp, sys.argv[7])
+" "$RUN_ID" "$CONTROLLER" "$SCENARIO" "$HEADLESS" "$max_step" "$real_time_factor" "$RUN_DIR/environment_manifest.json"
+}
+write_environment_manifest
+
+# INFRA-001: every one of this script's own pre-flight abort paths used to
+# bail out with nothing but a stderr message -- no result.json at all.
 # Write the same result.json shape run_experiment.py itself writes (see
 # write_infra_failure_result there) so every run -- however it fails --
-# leaves one consistent, verdict-tagged artifact behind.
+# leaves one consistent, verdict-tagged artifact behind, at the same
+# isolated path a successful run would have used (INFRA-003).
 write_infra_abort_result() {
   local verdict="$1"
   local reason="$2"
-  local out="/tmp/${SCENARIO}_result.json"
   python3 -c "
 import json, os, sys, time
 result = {
@@ -65,12 +122,44 @@ tmp = sys.argv[5] + '.tmp'
 with open(tmp, 'w') as f:
     json.dump(result, f, indent=2)
 os.replace(tmp, sys.argv[5])
-" "$SCENARIO" "$CONTROLLER" "$verdict" "$reason" "$out"
+" "$SCENARIO" "$CONTROLLER" "$verdict" "$reason" "$OUTPUT_JSON"
+  # best-effort legacy mirror -- some older tooling/manual workflows still
+  # look at the fixed /tmp path; the isolated copy above is the source of
+  # truth and is never overwritten by a later run.
+  cp "$OUTPUT_JSON" "/tmp/${SCENARIO}_result.json" 2>/dev/null
 }
 
+# INFRA-003: every abort path used to kill only GZ_PID/CTRL_PID plus a
+# partial pkill list that didn't match the final cleanup's list -- which is
+# exactly how 2 leftover robot_state_publisher processes survived an
+# aborted run during INFRA-002's own verification (their pkill pattern was
+# only present in the success-path cleanup, not the abort paths). One
+# shared teardown function, called from every exit path, so that can't
+# happen again. Kills by PID first (so a fast, targeted shutdown is tried),
+# then a pattern-based sweep as a backstop for grandchildren `kill` on the
+# direct child PID doesn't reach (ros2 launch's own children).
+teardown_all() {
+  [ -n "${GZ_PID:-}" ] && kill "$GZ_PID" 2>/dev/null
+  [ -n "${CTRL_PID:-}" ] && kill "$CTRL_PID" 2>/dev/null
+  sleep 1
+  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
+  pkill -9 -f '[g]z sim' 2>/dev/null
+  pkill -9 -f '[c]ontroller_node.py' 2>/dev/null
+  pkill -9 -f '[l]qr_node.py' 2>/dev/null
+  pkill -9 -f 'parameter_bridge' 2>/dev/null
+  pkill -9 -f 'robot_state_publisher' 2>/dev/null
+}
+
+echo "[1/4] Cleaning up any leftover processes..."
+teardown_all
+sleep 1
+
+echo "[2/4] Launching a fresh Gazebo simulation (headless:=$HEADLESS)..."
+ros2 launch double_pendulum_description spawn.launch.py headless:="$HEADLESS" > /tmp/gz_launch.log 2>&1 &
+GZ_PID=$!
+
 # INFRA-002: replaces a family of ad hoc sleeps/single-shot polls with
-# explicit checks against the actual readiness signals NEXT_STEPS.md's
-# Experiment Validity Layer section lists (real CLI output shapes
+# explicit checks against real readiness signals (CLI output shapes
 # confirmed by direct probing, not assumed):
 #   - /clock advancing: `ros2 topic echo /clock --once` yields
 #     `clock:\n  sec: N\n  nanosec: M`; read twice ~1s apart and require
@@ -85,10 +174,7 @@ os.replace(tmp, sys.argv[5])
 # "timestamp after this run's start") is not implemented as a separate
 # timestamp check: this script already guarantees it structurally by
 # fully pkilling and relaunching Gazebo (and therefore resetting the sim
-# clock to 0) before every single run, so no prior run's messages can
-# physically still be in flight. Documented here rather than silently
-# skipped.
-
+# clock to 0) before every single run.
 read_clock_ns() {
   timeout 3 ros2 topic echo /clock --once 2>/dev/null | awk '
     /^clock:/ { f=1; next }
@@ -154,26 +240,13 @@ wait_for_topic_pub_and_sub() {
   return 1
 }
 
-echo "[1/4] Cleaning up any leftover processes..."
-pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-pkill -9 -f '[g]z sim' 2>/dev/null
-pkill -9 -f '[c]ontroller_node.py' 2>/dev/null
-pkill -9 -f '[l]qr_node.py' 2>/dev/null
-sleep 2
-
-echo "[2/4] Launching a fresh Gazebo simulation (headless:=$HEADLESS)..."
-ros2 launch double_pendulum_description spawn.launch.py headless:="$HEADLESS" > /tmp/gz_launch.log 2>&1 &
-GZ_PID=$!
-
 echo "  waiting for /clock to actually be advancing (proves the sim is running, not just launched)..."
 if ! wait_for_clock_advancing 30; then
   echo "ERROR: /clock never showed advancing sim time within 30s -- aborting instead of" >&2
   echo "  running the experiment against a plant that isn't actually simulating yet." >&2
   tail -20 /tmp/gz_launch.log >&2
   write_infra_abort_result "INVALID_INFRA" "/clock did not show advancing sim time within 30s of Gazebo launch"
-  kill "$GZ_PID" 2>/dev/null
-  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-  pkill -9 -f '[g]z sim' 2>/dev/null
+  teardown_all
   exit 4
 fi
 
@@ -186,9 +259,7 @@ else
   echo "  the experiment against a plant that isn't actually simulating yet." >&2
   tail -20 /tmp/gz_launch.log >&2
   write_infra_abort_result "INVALID_INFRA" "no /joint_states data within 60s of Gazebo launch"
-  kill "$GZ_PID" 2>/dev/null
-  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-  pkill -9 -f '[g]z sim' 2>/dev/null
+  teardown_all
   exit 4
 fi
 
@@ -196,9 +267,7 @@ echo "  waiting for joint_state_broadcaster and effort_controller to both be 'ac
 if ! wait_for_controller_active "joint_state_broadcaster" 20 || ! wait_for_controller_active "effort_controller" 20; then
   echo "ERROR: controller_manager never reported both controllers active within 20s" >&2
   write_infra_abort_result "INVALID_INFRA" "controller_manager did not report joint_state_broadcaster+effort_controller active within 20s"
-  kill "$GZ_PID" 2>/dev/null
-  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-  pkill -9 -f '[g]z sim' 2>/dev/null
+  teardown_all
   exit 4
 fi
 
@@ -225,15 +294,13 @@ elif [ "$CONTROLLER" = "lqr" ]; then
     echo "  --- last lines of ctrl_launch.log ---" >&2
     tail -20 /tmp/ctrl_launch.log >&2
     write_infra_abort_result "INVALID_INFRA" "LQR did not report ready within 150s"
-    kill "$CTRL_PID" "$GZ_PID" 2>/dev/null
-    pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-    pkill -9 -f '[g]z sim' 2>/dev/null
+    teardown_all
     exit 3
   fi
 else
   echo "Unknown controller '$CONTROLLER' (expected pd|lqr)" >&2
   write_infra_abort_result "FAIL_HARNESS" "unknown controller argument '$CONTROLLER' (expected pd|lqr)"
-  kill "$GZ_PID" 2>/dev/null
+  teardown_all
   exit 2
 fi
 
@@ -241,10 +308,7 @@ fi
 # publisher AND the ros2_control subscriber are both actually connected --
 # stronger than the old check (a bare `ros2 topic echo --once` only proves
 # *a* publisher exists somewhere, not that ros2_control's own subscription
-# has completed discovery on it too). If the controller's publisher isn't
-# discovered yet when the disturbance hits, real torque output is 0 for
-# part or all of the run (matches CTRL-004's observed max_abs_tau1_nm=0.0
-# catastrophic-failure runs).
+# has completed discovery on it too).
 echo "  waiting for $CONTROLLER's /effort_controller/commands publisher and subscriber to both connect..."
 if ! wait_for_topic_pub_and_sub "/effort_controller/commands" 30; then
   echo "ERROR: $CONTROLLER controller's /effort_controller/commands never showed both a" >&2
@@ -253,21 +317,16 @@ if ! wait_for_topic_pub_and_sub "/effort_controller/commands" 30; then
   echo "  --- last lines of ctrl_launch.log ---" >&2
   tail -20 /tmp/ctrl_launch.log >&2
   write_infra_abort_result "INVALID_INFRA" "$CONTROLLER controller's /effort_controller/commands never showed both pub+sub connected within 30s"
-  kill "$CTRL_PID" "$GZ_PID" 2>/dev/null
-  pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-  pkill -9 -f '[g]z sim' 2>/dev/null
+  teardown_all
   exit 5
 fi
 
 echo "[4/4] Running experiment: $SCENARIO"
-ros2 run double_pendulum_eval run_experiment.py --scenario "$SCENARIO" --controller "$CONTROLLER"
+ros2 run double_pendulum_eval run_experiment.py --scenario "$SCENARIO" --controller "$CONTROLLER" --output "$OUTPUT_JSON"
 RESULT=$?
+cp "$OUTPUT_JSON" "/tmp/${SCENARIO}_result.json" 2>/dev/null
 
 echo "Cleaning up..."
-kill "$CTRL_PID" 2>/dev/null
-kill "$GZ_PID" 2>/dev/null
-sleep 1
-pkill -9 -f '[r]os2 launch double_pendulum' 2>/dev/null
-pkill -9 -f '[g]z sim' 2>/dev/null
+teardown_all
 
 exit $RESULT

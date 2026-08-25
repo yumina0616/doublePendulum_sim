@@ -1,0 +1,46 @@
+task_id: INFRA-003
+goal: >
+  private/NEXT_STEPS.md item 3-3: isolate run output so repeated
+  invocations of run_clean_experiment.sh / run_repeated_experiment.sh
+  stop overwriting the previous run's/batch's results (the old fixed
+  /tmp/<scenario>_result.json and /tmp/repeated_<scenario>_summary.json
+  paths), record an environment manifest (ROS distro, Gazebo version,
+  physics/timestep settings) alongside every result, and consolidate
+  process teardown into one place so an abort path can't leak processes
+  a different abort path already knew to kill.
+
+allowed_changes:
+  - double_pendulum_eval/scripts/run_clean_experiment.sh (run_id +
+    results/raw/<run_id>/ output directory, environment_manifest.json,
+    unified teardown_all() called from every exit path)
+  - double_pendulum_eval/scripts/run_repeated_experiment.sh (batch_id +
+    results/raw/repeated_<batch_id>/ directory, per-run subdirectories)
+  - .gitignore (results/ is generated data, not source)
+
+forbidden_changes:
+  - this specification.yaml
+  - any scenario's acceptance criteria
+  - double_pendulum_control/pd_controller.py, lqr_controller.py
+  - double_pendulum_eval/run_experiment.py, metrics.py (INFRA-001,
+    not touched by this task)
+
+acceptance:
+  - a real single run_clean_experiment.sh invocation writes its
+    result.json and environment_manifest.json into an isolated
+    results/raw/<run_id>/ directory, not a fixed path a later run would
+    overwrite
+  - a real run_repeated_experiment.sh batch (N=2+) isolates each run
+    under results/raw/repeated_<batch_id>/run<i>/ and writes
+    summary.json at the batch level, not into a fixed /tmp path
+  - process teardown is a single shared function called from every exit
+    path (all pre-flight aborts + the success-path cleanup), not
+    separately maintained per-path pkill lists
+  - the per-run ROS_DOMAIN_ID rotation NEXT_STEPS.md's item 3-3 also
+    asks for is only kept if it's actually verified working in this
+    project's real environment -- tested directly first, not assumed
+
+regression:
+  - both pd and lqr paths through run_clean_experiment.sh still reach
+    [4/4] and produce a real result.json under normal conditions
+  - no leftover gz sim/parameter_bridge/robot_state_publisher/controller
+    processes after a normal successful run

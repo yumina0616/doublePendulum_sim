@@ -1,0 +1,14 @@
+{
+  "run_id": "run1",
+  "controller": "pd",
+  "scenario": "nominal_balance",
+  "headless": "true",
+  "ros_distro": "humble",
+  "ros_domain_id": "unknown",
+  "gazebo_version": "Gazebo Sim, version 8.14.0",
+  "use_sim_time": true,
+  "physics_engine": "ode",
+  "max_step_size_s": "0.001",
+  "real_time_factor": "1.0",
+  "timestamp_utc": "2026-08-25T04:46:56Z"
+}
