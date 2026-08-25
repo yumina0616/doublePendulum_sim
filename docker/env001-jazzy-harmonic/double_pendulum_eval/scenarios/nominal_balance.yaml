@@ -1,0 +1,27 @@
+name: nominal_balance
+description: >
+  Spawn at upright, let it settle, apply one moderate impulse disturbance,
+  verify it recovers within the acceptance bounds. Baseline regression
+  scenario -- both PD and LQR should pass this comfortably.
+
+disturbance:
+  # Real external push via Gazebo's ApplyLinkWrench system (see
+  # wrench_disturbance.py) -- the controller keeps running and resisting
+  # throughout, unlike the retired /effort_controller/commands topic-race
+  # approach which briefly blacked the controller out completely.
+  link: link1
+  torque_y: 15.0
+  pulse_duration: 0.3
+
+settle_time_before_s: 1.0
+total_duration_s: 6.0
+settle_band_deg: 1.0
+
+acceptance:
+  stable: true
+  settling_time_q1_s: {max: 3.0}
+  settling_time_q2_s: {max: 3.0}
+  overshoot_q1_deg: {max: 30.0}
+  overshoot_q2_deg: {max: 30.0}
+  max_abs_tau1_nm: {max: 60.0}
+  max_abs_tau2_nm: {max: 30.0}

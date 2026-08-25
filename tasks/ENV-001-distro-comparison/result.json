@@ -1,0 +1,52 @@
+{
+  "task_id": "ENV-001",
+  "goal": "Compare Humble+Harmonic (unofficial pairing, this project's primary env) vs Jazzy+Harmonic (official pairing, Docker) using PHYS-001's physics-only vs ROS end-to-end methodology",
+  "timestamp": "2026-08-25T17:20:00Z",
+  "environment": {
+    "container": "docker/env001-jazzy-harmonic (Ubuntu 24.04 + ROS2 Jazzy + Gazebo Sim 8.11.0)",
+    "baseline": "primary WSL2 environment (Ubuntu 22.04 + ROS2 Humble + Gazebo Sim 8.14.0), see PHYS-001",
+    "network_mode": "docker bridge (default) -- --network host was tried first and found to break DDS discovery entirely on this WSL2 Docker installation"
+  },
+  "bugs_found": [
+    {
+      "id": "docker-network-host-breaks-dds",
+      "description": "docker run --network host makes ros2 topic list hang indefinitely (both rmw_fastrtps_cpp and rmw_cyclonedds_cpp), while gz-transport (non-ROS) partially works. Fixed by using Docker's default bridge network instead."
+    },
+    {
+      "id": "fastrtps-shm-accumulation-reproduces-in-docker",
+      "description": "Same FastRTPS /dev/shm accumulation CTRL-005/INFRA-002 found in bare WSL2 (82 stale entries after repeated pkill -9 + relaunch cycles) reproduces inside a Docker container too -- confirms it's a general artifact, not WSL2-networking-specific. Cleared manually, one-off, same precedent as before."
+    }
+  ],
+  "verification": {
+    "physics_only_n3": {
+      "runs": [
+        {"run": 1, "max_abs_q1_deg": 220.0622, "max_abs_q2_deg": 182.4296, "final_q1_deg": 182.9662},
+        {"run": 2, "max_abs_q1_deg": 220.0622, "max_abs_q2_deg": 182.4296, "final_q1_deg": 182.9662},
+        {"run": 3, "max_abs_q1_deg": 220.0622, "max_abs_q2_deg": 182.4296, "final_q1_deg": 182.9662}
+      ],
+      "sample_by_sample_max_abs_diff_rad": 0.0,
+      "matches_humble_harmonic_baseline_exactly": true
+    },
+    "ros_end_to_end_n3": {
+      "runs": [
+        {"run": 1, "overshoot_q1_deg": 240.0164},
+        {"run": 2, "overshoot_q1_deg": 237.0931},
+        {"run": 3, "overshoot_q1_deg": 212.9260}
+      ],
+      "range_deg": 27.09,
+      "humble_harmonic_baseline_range_deg": 4.45,
+      "ratio": "~6x larger variance in the officially-paired environment"
+    }
+  },
+  "acceptance_checks": {
+    "jazzy_harmonic_container_builds_and_spawns": true,
+    "n3_physics_only_completed": true,
+    "n3_ros_e2e_completed": true,
+    "direct_comparison_reported_honestly": true
+  },
+  "regression_checks": {
+    "primary_wsl2_environment_untouched": true
+  },
+  "passed": true,
+  "notes": "Honest negative result: the officially-paired Jazzy+Harmonic environment showed ~6x MORE ROS2/DDS-layer variance than the unofficial Humble+Harmonic environment, the opposite of NEXT_STEPS.md's hypothesized direction. Important confound stated plainly: Jazzy+Harmonic was tested inside a Docker container (an additional virtualization layer vs. Humble+Harmonic's bare-WSL2 testing), with direct evidence of real overhead (wall-clock time ~50-80% slower, one transient gz-transport service timeout that didn't occur in bare-WSL2 testing). This task does not disentangle 'official pairing' from 'containerization overhead' -- a controlled follow-up (Humble+Harmonic also tested inside an equivalent container) would be needed to isolate the true cause. What IS established cleanly: physics-solver determinism (0.0 rad diff, N=3) holds identically across both Gazebo Sim patch versions and both distro generations -- not environment-specific."
+}

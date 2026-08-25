@@ -1,0 +1,38 @@
+task_id: ENV-001
+goal: >
+  private/NEXT_STEPS.md item 5: this project's primary environment
+  (Ubuntu 22.04 + ROS2 Humble + Gazebo Sim 8.14 "Harmonic") is an
+  unofficial combination -- Humble's official Gazebo partner is Fortress,
+  and gz_ros2_control had to be built from source because the apt package
+  targets the wrong Gazebo version. Build an officially-paired environment
+  (Ubuntu 24.04 + ROS2 Jazzy + Gazebo Harmonic, via Docker since this
+  machine's native OS is Windows/WSL2) and re-run the same physics-only
+  (PHYS-001) and ROS end-to-end comparison to test whether the unofficial
+  combination contributes to the ~4.45 degree ROS2/DDS-layer variance
+  PHYS-001 found.
+
+allowed_changes:
+  - docker/env001-jazzy-harmonic/Dockerfile (new)
+  - docker/env001-jazzy-harmonic/double_pendulum_description,
+    double_pendulum_control, double_pendulum_eval (new -- copies of the
+    project's own packages as Docker build context; gz_ros2_control is
+    NOT vendored here since Jazzy provides it directly via apt)
+
+forbidden_changes:
+  - this specification.yaml
+  - any scenario's acceptance criteria
+  - the actual project source packages under src/ (only copies used as
+    Docker build context, not edited)
+
+acceptance:
+  - a working Ubuntu 24.04 + ROS2 Jazzy + Gazebo Harmonic container that
+    builds and spawns the double pendulum
+  - N=3 physics-only runs (PHYS-001's method) in the new environment
+  - N=3 ROS end-to-end runs (no controller, PHYS-001's method) in the new
+    environment
+  - a direct comparison table against Humble+Harmonic's PHYS-001 numbers,
+    reported honestly whichever direction it points
+
+regression:
+  - none (net-new Docker environment, does not touch the primary WSL2
+    environment or its results)

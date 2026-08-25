@@ -1,0 +1,50 @@
+{
+  "scenario": "nominal_balance",
+  "controller": "none",
+  "timestamp": "2026-08-25T08:14:57",
+  "n_samples_joint_states": 419,
+  "n_samples_effort": 0,
+  "metrics": {
+    "stable": false,
+    "settling_time_q1_s": Infinity,
+    "settling_time_q2_s": Infinity,
+    "overshoot_q1_deg": 237.09308515651028,
+    "overshoot_q2_deg": 82.94565411917743,
+    "rms_error_q1_rad": 4.068956193854784,
+    "rms_error_q2_rad": 1.31042267543942,
+    "max_abs_tau1_nm": 0.0,
+    "max_abs_tau2_nm": 0.0,
+    "final_q1_deg": 237.09308515651028,
+    "final_q2_deg": -74.06901246530275
+  },
+  "acceptance": {
+    "stable": true,
+    "settling_time_q1_s": {
+      "max": 3.0
+    },
+    "settling_time_q2_s": {
+      "max": 3.0
+    },
+    "overshoot_q1_deg": {
+      "max": 30.0
+    },
+    "overshoot_q2_deg": {
+      "max": 30.0
+    },
+    "max_abs_tau1_nm": {
+      "max": 60.0
+    },
+    "max_abs_tau2_nm": {
+      "max": 30.0
+    }
+  },
+  "passed": false,
+  "failures": [
+    "stable=False (expected True)",
+    "settling_time_q1_s=inf exceeds max 3.0",
+    "settling_time_q2_s=inf exceeds max 3.0",
+    "overshoot_q1_deg=237.0931 exceeds max 30.0",
+    "overshoot_q2_deg=82.9457 exceeds max 30.0"
+  ],
+  "verdict": "INVALID_INFRA"
+}

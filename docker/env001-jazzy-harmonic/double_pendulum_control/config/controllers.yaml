@@ -1,0 +1,20 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 200  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Phase 1 open-loop check: raw torque passthrough on both joints.
+    # Publish to /effort_controller/commands (std_msgs/Float64MultiArray,
+    # order = [joint1, joint2]) to sanity-check gravity/inertia/sign
+    # convention before any PD/LQR controller_node.py exists.
+    effort_controller:
+      type: forward_command_controller/ForwardCommandController
+
+effort_controller:
+  ros__parameters:
+    joints:
+      - joint1
+      - joint2
+    interface_name: effort
