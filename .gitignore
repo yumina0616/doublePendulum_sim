@@ -21,3 +21,7 @@ results/
 # who wants to run lqr_node.py needs to run design_lqr_gains.py once
 # themselves (README documents this).
 src/double_pendulum_control/lqr_gain_cache.json
+
+# Netlify CLI local site-link state (site_id only, but still local
+# machine state, not source -- standard netlify-cli convention)
+site/.netlify/

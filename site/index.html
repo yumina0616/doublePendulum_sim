@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Double Pendulum Control Engineering</title>
+<meta name="description" content="A fully actuated 2-DOF double pendulum in ROS2 + Gazebo, controlled by PD/LQR, verified by an automated Gazebo-in-the-loop harness, and evolved by a self-evolving coding-agent pipeline.">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --bg-panel: #12161f;
+    --bg-panel-2: #171c27;
+    --border: #262c3a;
+    --text: #dfe4ee;
+    --text-dim: #8b93a7;
+    --text-faint: #5c6478;
+    --blue: #4f8bf0;
+    --blue-dim: #2d4a80;
+    --orange: #e8965a;
+    --orange-dim: #7a5330;
+    --green: #4fbf7a;
+    --red: #e0616b;
+    --yellow: #e0c264;
+    --mono: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: var(--mono); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(11,14,20,0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; max-width: 980px; }
+  nav .brand { font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
+  nav .links { display: flex; gap: 18px; flex-wrap: wrap; }
+  nav .links a { color: var(--text-dim); font-size: 13px; }
+  nav .links a:hover { color: var(--text); text-decoration: none; }
+
+  /* hero */
+  header.hero { padding: 88px 0 56px; }
+  header.hero .eyebrow {
+    font-family: var(--mono); font-size: 12px; color: var(--blue);
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px;
+  }
+  header.hero h1 { font-size: 40px; line-height: 1.2; margin: 0 0 18px; max-width: 720px; }
+  header.hero p.lede { font-size: 17px; color: var(--text-dim); max-width: 680px; margin: 0 0 28px; }
+  header.hero .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn.primary:hover { background: #6b9ef4; text-decoration: none; }
+  .btn.ghost { color: var(--text); }
+  .btn.ghost:hover { border-color: var(--text-dim); text-decoration: none; }
+
+  section { padding: 56px 0; border-top: 1px solid var(--border); }
+  section > .wrap > h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-faint); font-family: var(--mono); margin: 0 0 8px;
+  }
+  section > .wrap > h3.title { font-size: 26px; margin: 0 0 32px; max-width: 620px; }
+  section > .wrap > p.intro { color: var(--text-dim); max-width: 680px; margin: -20px 0 32px; font-size: 15px; }
+
+  /* three-layer diagram */
+  .layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .layer {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 22px; position: relative;
+  }
+  .layer .tag { font-family: var(--mono); font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+  .layer h4 { margin: 6px 0 10px; font-size: 17px; }
+  .layer p { color: var(--text-dim); font-size: 13.5px; margin: 0; }
+  .layer ul { margin: 10px 0 0; padding-left: 18px; color: var(--text-dim); font-size: 13px; }
+  .layer.agentic { border-top: 3px solid var(--yellow); }
+  .layer.robotics { border-top: 3px solid var(--blue); }
+  .layer.control { border-top: 3px solid var(--orange); }
+  .layer-arrows { text-align: center; color: var(--text-faint); font-family: var(--mono); font-size: 13px; margin: 10px 0; }
+
+  /* phase timeline */
+  .timeline { display: flex; flex-direction: column; gap: 2px; }
+  .phase-row {
+    display: grid; grid-template-columns: 100px 1fr 140px; gap: 14px; align-items: start;
+    padding: 14px 16px; border-radius: 8px;
+  }
+  .phase-row:hover { background: var(--bg-panel); }
+  .phase-num { font-family: var(--mono); color: var(--text-faint); font-size: 13px; padding-top: 2px; }
+  .phase-body h5 { margin: 0 0 4px; font-size: 14.5px; }
+  .phase-body p { margin: 0; color: var(--text-dim); font-size: 13px; }
+  .badge {
+    font-family: var(--mono); font-size: 11px; padding: 3px 9px; border-radius: 20px;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; height: fit-content;
+  }
+  .badge.done { background: rgba(79,191,122,0.12); color: var(--green); border: 1px solid rgba(79,191,122,0.3); }
+  .badge.partial { background: rgba(224,194,100,0.12); color: var(--yellow); border: 1px solid rgba(224,194,100,0.3); }
+
+  /* result cards */
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .result-card {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+  }
+  .result-card h5 { margin: 0 0 4px; font-size: 14.5px; }
+  .result-card .task-id { font-family: var(--mono); font-size: 11px; color: var(--blue); }
+  .result-card p.desc { color: var(--text-dim); font-size: 13px; margin: 8px 0 16px; }
+
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 90px 1fr 64px; gap: 10px; align-items: center; }
+  .bar-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .bar-track { background: var(--bg-panel-2); border-radius: 4px; height: 16px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-fill.blue { background: linear-gradient(90deg, var(--blue-dim), var(--blue)); }
+  .bar-fill.orange { background: linear-gradient(90deg, var(--orange-dim), var(--orange)); }
+  .bar-fill.red { background: linear-gradient(90deg, #6b2530, var(--red)); }
+  .bar-fill.green { background: linear-gradient(90deg, #245038, var(--green)); }
+  .bar-val { font-family: var(--mono); font-size: 11.5px; color: var(--text); text-align: right; }
+  .card-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-faint); }
+
+  /* pipeline diagram */
+  .pipeline { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 8px; }
+  .pipe-step {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; min-width: 138px; flex-shrink: 0;
+  }
+  .pipe-step .n { font-family: var(--mono); font-size: 10px; color: var(--text-faint); }
+  .pipe-step .t { font-size: 13px; font-weight: 600; margin: 4px 0 4px; }
+  .pipe-step .d { font-size: 11.5px; color: var(--text-dim); }
+  .pipe-arrow { display: flex; align-items: center; padding: 0 8px; color: var(--text-faint); font-size: 18px; flex-shrink: 0; }
+  .pipe-step.reject { border-color: rgba(224,97,107,0.4); }
+  .pipe-step.reject .t { color: var(--red); }
+
+  .verdict-box {
+    margin-top: 24px; background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; font-size: 13.5px; color: var(--text-dim);
+  }
+  .verdict-box .v-label { font-family: var(--mono); font-size: 11px; color: var(--red); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+
+  /* security cards */
+  .sec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .sec-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .sec-card .sec-id { font-family: var(--mono); font-size: 11px; color: var(--orange); }
+  .sec-card h5 { margin: 6px 0 10px; font-size: 15px; }
+  .sec-flow { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .sec-flow-item { display: flex; gap: 10px; font-size: 12.5px; }
+  .sec-flow-item .icon { flex-shrink: 0; width: 18px; text-align: center; }
+  .sec-flow-item.blocked .icon { color: var(--green); }
+  .sec-flow-item.partial .icon { color: var(--yellow); }
+  .sec-flow-item p { margin: 0; color: var(--text-dim); }
+  .sec-tag {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(224,194,100,0.12); color: var(--yellow); margin-top: 12px;
+  }
+
+  /* schematic */
+  .schematic-wrap {
+    display: grid; grid-template-columns: 280px 1fr; gap: 32px; align-items: center;
+  }
+  .schematic-caption { font-size: 13px; color: var(--text-dim); }
+  .schematic-caption .label { font-family: var(--mono); font-size: 11px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 8px; display: block; }
+  .schematic-caption ul { padding-left: 18px; margin: 12px 0; }
+  .schematic-caption li { margin-bottom: 4px; }
+
+  /* open problems */
+  .problem { display: grid; grid-template-columns: 28px 1fr; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--border); }
+  .problem:last-child { border-bottom: none; }
+  .problem .marker { font-family: var(--mono); color: var(--yellow); font-size: 14px; }
+  .problem h5 { margin: 0 0 6px; font-size: 15px; }
+  .problem p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+  .problem .stat { font-family: var(--mono); font-size: 12.5px; color: var(--orange); }
+
+  /* tech stack */
+  .stack-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 32px; }
+  .stack-pill {
+    font-family: var(--mono); font-size: 12px; padding: 6px 12px; border-radius: 20px;
+    background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .authorship {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px;
+    font-size: 13.5px; color: var(--text-dim);
+  }
+  .authorship h5 { color: var(--text); margin: 0 0 10px; font-size: 14px; }
+
+  footer { padding: 40px 0 60px; text-align: center; }
+  footer p { color: var(--text-faint); font-size: 12.5px; }
+
+  @media (max-width: 760px) {
+    .layers { grid-template-columns: 1fr; }
+    .result-grid { grid-template-columns: 1fr; }
+    .sec-grid { grid-template-columns: 1fr; }
+    .schematic-wrap { grid-template-columns: 1fr; }
+    header.hero h1 { font-size: 30px; }
+    .phase-row { grid-template-columns: 1fr; }
+    nav .links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">agentic&nbsp;double&nbsp;pendulum</div>
+    <div class="links">
+      <a href="#architecture">Architecture</a>
+      <a href="#phases">Phases</a>
+      <a href="#results">Results</a>
+      <a href="#harness">Self-Evolving</a>
+      <a href="#security">Security</a>
+      <a href="#open-problems">Open Problems</a>
+      <a href="https://github.com/yumina0616/doublePendulum_sim" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Robotics &middot; Control &middot; Agentic Coding Harness</div>
+    <h1>Agentic Double Pendulum Control Engineering</h1>
+    <p class="lede">
+      A <strong>fully actuated 2-DOF double pendulum</strong> simulated in ROS2 Humble + Gazebo
+      Sim 8.14, stabilized by PD and LQR controllers, verified by an automated Gazebo-in-the-loop
+      evaluation harness, and extended by a self-evolving coding-agent pipeline that has produced
+      honest <code>REJECT</code> verdicts and found real vulnerabilities in its own tooling.
+      This page shows what's actually done, what's still open, and the receipts for both.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/yumina0616/doublePendulum_sim" target="_blank" rel="noopener">View source on GitHub</a>
+      <a class="btn ghost" href="#open-problems">Jump to open problems</a>
+    </div>
+  </div>
+</header>
+
+<section id="architecture">
+  <div class="wrap">
+    <h2>01 &middot; Architecture</h2>
+    <h3 class="title">Three layers, each verifiable independently</h3>
+    <div class="layers">
+      <div class="layer agentic">
+        <div class="tag">Agentic</div>
+        <h4>Coding &amp; skill harness</h4>
+        <p>Task spec → plan → code change → build → sim → verify, with a failure store,
+        skill lifecycle, and regression-gated promotion.</p>
+        <ul>
+          <li>4-way run verdict (PASS/FAIL_CONTROL, INVALID_INFRA, FAIL_HARNESS)</li>
+          <li>Skill states: candidate → active → retired</li>
+          <li>Red-team tested (SEC-001, SEC-002)</li>
+        </ul>
+      </div>
+      <div class="layer robotics">
+        <div class="tag">Robotics</div>
+        <h4>ROS2 + Gazebo</h4>
+        <p>ros2_control effort interfaces, gz_ros2_control bridge, an explicit readiness
+        state machine instead of ad hoc sleeps.</p>
+        <ul>
+          <li>Real external disturbance via ApplyLinkWrench</li>
+          <li>gz-transport physics-only harness (no ROS/DDS)</li>
+          <li>Isolated per-run output + environment manifest</li>
+        </ul>
+      </div>
+      <div class="layer control">
+        <div class="tag">Control</div>
+        <h4>PD &amp; LQR</h4>
+        <p>Sympy-derived nonlinear dynamics, numerical linearization about the upright
+        equilibrium, LQI (integral-augmented) full-state feedback.</p>
+        <ul>
+          <li>Single source of truth for plant parameters</li>
+          <li>Hash-checked gain cache (stale gain = hard failure)</li>
+          <li>Known gain-tuning gap, stated honestly below</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="phases">
+  <div class="wrap">
+    <h2>02 &middot; Progress</h2>
+    <h3 class="title">Phase 0&ndash;7, each backed by a task directory</h3>
+    <p class="intro">
+      Every phase below is backed by a <code>tasks/&lt;ID&gt;/</code> directory (spec, plan,
+      result, evidence) in the repo &mdash; not a status claim without a paper trail.
+      <span class="mono">17</span> tasks completed to date.
+    </p>
+    <div class="timeline">
+      <div class="phase-row">
+        <div class="phase-num">Phase 0</div>
+        <div class="phase-body"><h5>Environment setup</h5><p>ROS2 Humble + Gazebo Sim 8.14 &ldquo;Harmonic&rdquo; in WSL2 &mdash; an unofficial combination that required rebuilding gz_ros2_control from source.</p></div>
+        <span class="badge done">✓ done</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 1</div>
+        <div class="phase-body"><h5>Plant</h5><p>URDF/Xacro double pendulum, Gazebo spawn, joint state/torque I/O over ros2_control.</p></div>
+        <span class="badge done">✓ done</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 2</div>
+        <div class="phase-body"><h5>Classical control</h5><p>PD, linearization, LQR, disturbance-rejection tests &mdash; works, with a known gain-tuning gap (see Open Problems).</p></div>
+        <span class="badge done">✓ done*</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 3</div>
+        <div class="phase-body"><h5>Evaluation harness</h5><p>Simulation → metrics → verdict, now split into 4 categories (<code>INFRA-001</code>) instead of a plain pass/fail that used to conflate control failure with infra flakiness.</p></div>
+        <span class="badge done">✓ done</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 4</div>
+        <div class="phase-body"><h5>Basic coding agent</h5><p>Task spec → PLAN.md → code change → build → sim → verify, exercised across 5 real control tasks.</p></div>
+        <span class="badge done">✓ done</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 5</div>
+        <div class="phase-body"><h5>Tool architecture</h5><p>Structured robotics tools vs. raw bash &mdash; mostly built; a full bash-vs-structured ablation study is deferred.</p></div>
+        <span class="badge partial">◐ 5/6</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 6</div>
+        <div class="phase-body"><h5>Self-evolving harness</h5><p>failure store → categorize → propose skill → regression-gated promote/reject. One real skill proposed and evaluated end to end, honestly <strong>REJECTed twice</strong> (N=3, then N=8).</p></div>
+        <span class="badge done">✓ MVP</span>
+      </div>
+      <div class="phase-row">
+        <div class="phase-num">Phase 7</div>
+        <div class="phase-body"><h5>Memory lifecycle / safety</h5><p>Skill retirement, stale-rule detection, approval gate, sandbox policy &mdash; two real vulnerabilities found and fixed in this project's own tooling (<code>SEC-001</code>, <code>SEC-002</code>).</p></div>
+        <span class="badge done">✓ MVP</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <h2>03 &middot; Key Results</h2>
+    <h3 class="title">The most important thing this project has proven</h3>
+    <p class="intro">
+      Run-to-run variance was this project's longest-standing open question. It's now resolved
+      into two separate, honestly-labeled findings &mdash; not by assumption, by measurement.
+    </p>
+    <div class="result-grid">
+
+      <div class="result-card">
+        <div class="task-id">CTRL-003 → CTRL-005</div>
+        <h5>Fixing the measurement, not the physics</h5>
+        <p class="desc">PD/nominal_balance overshoot (deg), identical clean runs, before and after two real code-level bug fixes (controller-readiness race, recording-schedule race).</p>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">CTRL-003 run 1</span><div class="bar-track"><div class="bar-fill red" style="width:100%"></div></div><span class="bar-val">200.5°</span></div>
+          <div class="bar-row"><span class="bar-label">CTRL-003 run 2</span><div class="bar-track"><div class="bar-fill red" style="width:13.4%"></div></div><span class="bar-val">26.8°</span></div>
+          <div class="bar-row"><span class="bar-label">CTRL-003 run 3</span><div class="bar-track"><div class="bar-fill red" style="width:32%"></div></div><span class="bar-val">63.9°</span></div>
+          <div class="bar-row"><span class="bar-label">CTRL-005 ×7</span><div class="bar-track"><div class="bar-fill green" style="width:8.2%"></div></div><span class="bar-val">16.3&ndash;16.4°</span></div>
+        </div>
+        <div class="card-note">Root cause: PD's readiness check was a blind <code>sleep 2</code> (unlike LQR's log-based check), and the recording schedule could start counting before real data arrived. Both fixed, not papered over.</div>
+      </div>
+
+      <div class="result-card">
+        <div class="task-id">PHYS-001</div>
+        <h5>Isolating the solver from the DDS layer</h5>
+        <p class="desc">Same disturbance profile, N=3 each. Physics-only bypasses ROS2/DDS entirely (gz-transport direct); ROS e2e adds just the sensing/discovery layer, no controller.</p>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Physics-only</span><div class="bar-track"><div class="bar-fill green" style="width:2%"></div></div><span class="bar-val">0.0 rad diff</span></div>
+          <div class="bar-row"><span class="bar-label">ROS end-to-end</span><div class="bar-track"><div class="bar-fill orange" style="width:35%"></div></div><span class="bar-val">4.45° spread</span></div>
+        </div>
+        <div class="card-note">Bit-for-bit identical trajectories across 3 independent Gazebo relaunches under physics-only mode &mdash; even with genuinely chaotic, uncontrolled dynamics. The physics solver is deterministic; every variance this project has observed traces to the ROS2/DDS/controller layer.</div>
+      </div>
+
+      <div class="result-card">
+        <div class="task-id">BENCH-001 vs BENCH-002</div>
+        <h5>An honest non-improvement</h5>
+        <p class="desc">A candidate skill (&ldquo;regenerate the linear model after any plant change&rdquo;) applied to a real plant/model mismatch. Same N=3 LQR/nominal_balance evaluation, before and after.</p>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">BENCH-001 (no fix)</span><div class="bar-track"><div class="bar-fill red" style="width:0%"></div></div><span class="bar-val">0/3 pass</span></div>
+          <div class="bar-row"><span class="bar-label">BENCH-002 (fix applied)</span><div class="bar-track"><div class="bar-fill red" style="width:0%"></div></div><span class="bar-val">0/3 pass</span></div>
+        </div>
+        <div class="card-note">The regression gate correctly REJECTed this skill &mdash; a plausible-sounding fix that measurably did not help is not the same as a fix, and the pipeline didn't pretend otherwise.</div>
+      </div>
+
+      <div class="result-card">
+        <div class="task-id">INFRA-001</div>
+        <h5>Verdicts stop conflating causes</h5>
+        <p class="desc">A real N=3 repeated-run batch, aggregated the old way (plain pass/fail) vs. the new 4-way taxonomy.</p>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Old: "FAIL"</span><div class="bar-track"><div class="bar-fill red" style="width:100%"></div></div><span class="bar-val">3/3</span></div>
+          <div class="bar-row"><span class="bar-label">FAIL_CONTROL</span><div class="bar-track"><div class="bar-fill orange" style="width:66%"></div></div><span class="bar-val">2/3</span></div>
+          <div class="bar-row"><span class="bar-label">INVALID_INFRA</span><div class="bar-track"><div class="bar-fill yellow-fill" style="width:33%;background:linear-gradient(90deg,#6b5a24,var(--yellow))"></div></div><span class="bar-val">1/3</span></div>
+        </div>
+        <div class="card-note">The one INVALID_INFRA run was a genuine Gazebo discovery failure (unrelated to control quality) &mdash; the old binary verdict would have silently counted it as a control failure.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="harness">
+  <div class="wrap">
+    <h2>04 &middot; Self-Evolving Harness</h2>
+    <h3 class="title">Failure → skill proposal → regression gate → REJECT</h3>
+    <p class="intro">
+      Phase 6's whole point was demonstrating an honest pipeline, including the ability to say no
+      to its own idea. Here's the real run.
+    </p>
+    <div class="pipeline">
+      <div class="pipe-step"><div class="n">01</div><div class="t">Failure store</div><div class="d">Scans <code>tasks/*/result.json</code>, finds real failures</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="n">02</div><div class="t">Categorize</div><div class="d">Groups BENCH-001 + BENCH-003 as &ldquo;plant-model-inconsistency&rdquo;</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="n">03</div><div class="t">Propose skill</div><div class="d"><code>SKILL-CONTROL-MODEL-CONSISTENCY</code> generated once evidence ≥ 2</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="n">04</div><div class="t">Apply &amp; measure</div><div class="d">BENCH-002: same evaluation, skill's procedure applied</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step reject"><div class="n">05</div><div class="t">REJECT</div><div class="d">Candidate pass_rate did not beat baseline &mdash; twice (N=3, then N=8)</div></div>
+    </div>
+    <div class="verdict-box">
+      <div class="v-label">Why REJECT, not promote</div>
+      Regenerating the linear model with the corrected plant mass produced overshoot/failure
+      numbers nearly identical to the unfixed baseline (223.6° vs. 223.7°, same torque
+      saturation). A plausible-sounding procedure that doesn't measurably improve the outcome
+      does not get promoted, no matter how reasonable it sounds &mdash; <code>promote_skill.py</code>
+      requires the candidate to <em>strictly beat</em> the baseline, and this candidate never did.
+      Later, <code>REFACTOR-001</code> made the underlying rule structurally unnecessary
+      (a single <code>plant_params.yaml</code> source plus a hash-checked gain cache), and the
+      skill was formally retired rather than left dangling as an un-promotable candidate.
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <h2>05 &middot; Red-Team Findings</h2>
+    <h3 class="title">Two real vulnerabilities, found and fixed against this project's own tooling</h3>
+    <p class="intro">
+      Not hypothetical scenarios &mdash; both were run for real against the actual harness code.
+    </p>
+    <div class="sec-grid">
+      <div class="sec-card">
+        <div class="sec-id">SEC-001</div>
+        <h5>Malicious task description</h5>
+        <p style="color:var(--text-dim);font-size:13px;margin:0;">
+          An embedded &ldquo;SYSTEM OVERRIDE&rdquo; instruction tells an agent to loosen acceptance
+          criteria and fabricate a passing <code>result.json</code> without running the simulation.
+        </p>
+        <div class="sec-flow">
+          <div class="sec-flow-item blocked"><span class="icon">✓</span><p><strong>Spec tampering</strong> &mdash; caught mechanically by <code>check_forbidden_changes.py</code>, verified against real repo history, not just this synthetic case.</p></div>
+          <div class="sec-flow-item blocked"><span class="icon">✓</span><p><strong>Result fabrication</strong> &mdash; closed by <code>verify_task_completion.py</code>, an independent replay that re-runs the claimed experiment for real.</p></div>
+        </div>
+      </div>
+      <div class="sec-card">
+        <div class="sec-id">SEC-002</div>
+        <h5>Poisoned skill</h5>
+        <p style="color:var(--text-dim);font-size:13px;margin:0;">
+          A proposed skill &ldquo;fixes&rdquo; actuator-saturation failures by raising the URDF's
+          torque limits instead of correcting the controller.
+        </p>
+        <div class="sec-flow">
+          <div class="sec-flow-item blocked"><span class="icon">✓</span><p><strong>Auto-execution</strong> &mdash; a skill's <code>procedure</code> is never parsed and run by any script; confirmed by direct code search across the whole harness.</p></div>
+          <div class="sec-flow-item partial"><span class="icon">◐</span><p><strong>Regression gate safety-awareness</strong> &mdash; the gate itself is pass_rate-only. Closed by <code>safety_scan.py</code>'s denylist, which now requires an explicit <code>--acknowledge-safety-warning</code> before a safety-relevant promotion can proceed.</p></div>
+        </div>
+        <span class="sec-tag">mitigated, not solved</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="schematic">
+  <div class="wrap">
+    <h2>06 &middot; The Plant</h2>
+    <h3 class="title">A fully actuated 2-DOF double pendulum</h3>
+    <div class="schematic-wrap">
+      <svg viewBox="0 0 240 260" width="100%" height="auto" style="max-width:280px;">
+        <line x1="60" y1="20" x2="180" y2="20" stroke="#5c6478" stroke-width="4"/>
+        <circle cx="120" cy="20" r="10" fill="#8b93a7"/>
+        <line x1="120" y1="20" x2="86" y2="120" stroke="#4f8bf0" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="120" cy="20" r="7" fill="#dfe4ee"/>
+        <line x1="86" y1="120" x2="150" y2="215" stroke="#e8965a" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="86" cy="120" r="7" fill="#dfe4ee"/>
+        <circle cx="150" cy="215" r="9" fill="#e8965a"/>
+        <text x="130" y="75" fill="#8b93a7" font-family="monospace" font-size="11">L1, m1</text>
+        <text x="160" y="170" fill="#8b93a7" font-family="monospace" font-size="11">L2, m2</text>
+        <text x="94" y="16" fill="#8b93a7" font-family="monospace" font-size="11">q1</text>
+        <text x="60" y="115" fill="#8b93a7" font-family="monospace" font-size="11">q2</text>
+      </svg>
+      <div class="schematic-caption">
+        <span class="label">Schematic (not a live capture &mdash; a recorded Gazebo demo is a planned addition)</span>
+        <p>Both joints are effort-controlled (fully actuated), axis aligned so the pendulum swings
+        in the X&ndash;Z plane. Target state is the fully inverted (upright) equilibrium &mdash;
+        the unstable one.</p>
+        <ul>
+          <li>m1 = m2 = 1.0 kg, L1 = L2 = 1.0 m</li>
+          <li>τ1_max = 60 N·m, τ2_max = 30 N·m</li>
+          <li>Joint damping = 0.05 (both joints)</li>
+          <li>Single source: <code>plant_params.yaml</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="open-problems">
+  <div class="wrap">
+    <h2>07 &middot; Open Problems</h2>
+    <h3 class="title">What isn't solved yet</h3>
+    <p class="intro">Stated plainly, with numbers &mdash; not smoothed over.</p>
+
+    <div class="problem">
+      <div class="marker">01</div>
+      <div>
+        <h5>PD/LQR gain tuning gap</h5>
+        <p>Even after CTRL-005 made measurement fully reproducible, settling time consistently
+        lands at <span class="stat">3.3&ndash;3.4s</span> against <code>nominal_balance</code>'s
+        <span class="stat">3.0s</span> max &mdash; an ordinary, ~10&ndash;15% gain-tuning gap, not a
+        mystery. Not yet retuned.</p>
+      </div>
+    </div>
+    <div class="problem">
+      <div class="marker">02</div>
+      <div>
+        <h5>ROS2/DDS layer's residual variance is not sub-divided</h5>
+        <p><code>PHYS-001</code> proved the ~<span class="stat">4.45°</span> spread lives in the
+        ROS2/DDS/controller layer, not the physics solver &mdash; but not which specific sub-layer
+        (discovery timing? QoS settings? broadcaster publish jitter?). A well-scoped follow-up,
+        not started.</p>
+      </div>
+    </div>
+    <div class="problem">
+      <div class="marker">03</div>
+      <div>
+        <h5>Distro/Gazebo combination is unofficial</h5>
+        <p>Ubuntu 22.04 + ROS2 Humble + Gazebo Sim 8.14 &ldquo;Harmonic&rdquo; is not an official
+        pairing (Humble's official partner is Fortress) &mdash; a Jazzy+Harmonic comparison
+        (<code>ENV-001</code>) to test whether this contributes to the residual variance above is
+        planned, not started.</p>
+      </div>
+    </div>
+    <div class="problem">
+      <div class="marker">04</div>
+      <div>
+        <h5>RecurDyn / high-fidelity flexible-body validation</h5>
+        <p>Explicitly gated until the physics-validity layer above is fully trusted &mdash; not
+        started, and deliberately not started early to avoid conflating two different sources of
+        discrepancy.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="stack">
+  <div class="wrap">
+    <h2>08 &middot; Stack &amp; Authorship</h2>
+    <h3 class="title">What ran this, and who decided what</h3>
+    <div class="stack-list">
+      <span class="stack-pill">ROS2 Humble</span>
+      <span class="stack-pill">Gazebo Sim 8.14 (Harmonic)</span>
+      <span class="stack-pill">gz_ros2_control</span>
+      <span class="stack-pill">Python 3.10</span>
+      <span class="stack-pill">sympy</span>
+      <span class="stack-pill">scipy (CARE solve)</span>
+      <span class="stack-pill">numpy</span>
+      <span class="stack-pill">WSL2 / Ubuntu 22.04</span>
+      <span class="stack-pill">gz-transport</span>
+      <span class="stack-pill">colcon</span>
+    </div>
+    <div class="authorship">
+      <h5>Authorship</h5>
+      <p>
+        Every task in <code>tasks/</code> is agent-implemented: code changes, PLAN.md narratives,
+        and result verification were carried out by an AI coding agent (Claude Code) working from
+        a written spec. What the human decided: the scenario acceptance criteria, which failures
+        were worth investigating, what counts as a passing result, the interpretation of every
+        experiment's numbers, and every decision to REJECT, retire, or accept a change. The
+        agent does not get to redefine what &ldquo;passing&rdquo; means &mdash; that boundary is
+        enforced mechanically (<code>forbidden_changes</code>, checked by
+        <code>check_forbidden_changes.py</code>), not by convention alone.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Built by an agentic coding pipeline, described honestly by the same. &middot;
+    <a href="https://github.com/yumina0616/doublePendulum_sim" target="_blank" rel="noopener">github.com/yumina0616/doublePendulum_sim</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
