@@ -2,6 +2,10 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
+**포트폴리오 사이트**: [bright-muffin-5e2b3e.netlify.app](https://bright-muffin-5e2b3e.netlify.app)
+— 이 README와 같은 정직성 기준으로 만든 결과 시각화·다이어그램 페이지입니다
+(미해결 문제도 그대로 보여줍니다).
+
 ROS2(Humble) + Gazebo Sim(Harmonic)에서 **완전구동(fully actuated)** 2-DOF
 이중 진자를 완전 직립(upright) 자세로 안정화하는 제어 프로젝트입니다. 그 위에
 에이전틱 엔지니어링 레이어를
@@ -58,7 +62,7 @@ REJECT)를 참고하세요.
 | 0 — 환경 셋업 | WSL2에 ROS2 Humble + Gazebo Harmonic | ✅ 완료 |
 | 1 — Plant | URDF/Xacro 이중 진자, Gazebo spawn, joint state/torque I/O | ✅ 완료 |
 | 2 — 고전 제어 | PD, 선형화, LQR, 초기조건/외란 테스트 | ✅ 완료 — 아래 [한계](#알려진-한계-pd-게인-튜닝) 참고 |
-| 3 — 자동 평가 하네스 | 시뮬레이션 → metric → `result.json` pass/fail, regression suite | ✅ 완료 — Phase 2의 미해결 이슈를 숨기지 않고 정확히 *잡아냄*(아래 한계 참고). 다만 아직 이분법 pass/fail이라 제어 실패와 인프라 실패를 구분 못함 |
+| 3 — 자동 평가 하네스 | 시뮬레이션 → metric → `result.json` pass/fail, regression suite | ✅ 완료 — Phase 2의 미해결 이슈를 숨기지 않고 정확히 *잡아냄*(아래 한계 참고). 이제 이분법 pass/fail 대신 4가지 판정(`PASS_CONTROL`/`FAIL_CONTROL`/`INVALID_INFRA`/`FAIL_HARNESS`)으로 분리됨 — 아래 [실험 유효성 계층](#실험-유효성-계층) 참고 |
 | 4 — 기본 코딩 에이전트 | task spec → PLAN.md → 코드 수정 → build → sim → 검증 | ✅ 5개 task 완료 (`CTRL-001`–`CTRL-005`) |
 | 5 — Tool Architecture | structured robotics tool vs. raw bash | 🟨 6개 중 5개 완료(ROS graph inspection, run comparison 등); bash-vs-structured 비교실험만 보류 |
 | 6 — Self-Evolving Harness | failure store → categorize → skill 제안 → regression-gated promote/reject | ✅ MVP 완료 — 실제 skill 하나를 끝까지 제안·평가했고, **두 번(N=3, N=8) 다 정직하게 REJECT** — 아래 참고 |
@@ -66,6 +70,46 @@ REJECT)를 참고하세요.
 
 위 모든 Phase는 `tasks/` 아래 실제 task 디렉토리(spec, plan, result, evidence)로
 뒷받침됩니다 — 근거 없는 상태 주장이 아닙니다.
+
+## 실험 유효성 계층
+
+후속 task 3개(`INFRA-001`–`003`)가 하네스 자신의 측정을 신뢰할 수 있게
+만들었고, 거기에 더해 이 프로젝트의 run-to-run 변동성이 실제로 어디서
+오는지 마침내 답한 task(`PHYS-001`) 하나가 더 있습니다:
+
+- **`INFRA-001`** — 단순 pass/fail bool은 "컨트롤러가 진짜 실패한 것"과
+  "실험 자체가 애초에 유효하게 실행되지 않은 것"(토크 0, 샘플 0, discovery
+  timeout)을 같은 것으로 취급했습니다. 이제 모든 run은 4가지 판정
+  (`PASS_CONTROL`/`FAIL_CONTROL`/`INVALID_INFRA`/`FAIL_HARNESS`) 중 하나를
+  받고, `pass_rate`는 앞의 두 개로만 계산합니다 — 인프라/하네스 실패율은
+  별도로 추적해서 제어 품질 숫자를 조용히 오염시키지 않습니다.
+- **`INFRA-002`** — `run_clean_experiment.sh`에 남아있던 ad hoc `sleep`들을
+  실제 readiness 신호(`/clock` 증가, `ros2 control list_controllers`의
+  `active` 상태, publisher+subscriber 연결)를 폴링하는 방식으로 교체.
+  검증 실행 중 실제 인프라 실패(`CTRL-005`가 이미 문서화한 FastRTPS
+  `/dev/shm` 누적 문제)를 실시간으로 잡아냈습니다.
+- **`INFRA-003`** — 모든 run/batch가 이제 격리된
+  `results/raw/<run_id>/` 출력 디렉토리(이후 run에 절대 덮어써지지 않음)와
+  environment manifest(ROS distro, Gazebo 버전, timestep/solver 설정)를
+  갖습니다. 계획했던 반복 실행마다 다른 `ROS_DOMAIN_ID` 부여는 구현·테스트
+  후 **되돌렸습니다** — 이 프로젝트의 WSL2+Gazebo+Humble 조합에서 `/clock`
+  discovery 자체를 깨뜨리는 것을 실측으로 확인했기 때문입니다(조용히 남겨두지
+  않고 문서화함).
+- **`PHYS-001`** — 진짜 성과. 새 하네스가 Gazebo를 gz-transport로만
+  직접 구동(pause/step/wrench/pose — ROS2/DDS 전혀 안 거침)하고 같은
+  외란 프로파일을 오픈루프로 재생합니다. 결과, 서로 다른 3번의 독립적인
+  Gazebo 재실행에서 **완전히 비트 단위로 동일한 궤적**(run당 120개 샘플
+  전체에서 최대 차이 0.0 rad) — 제어 없이 진짜로 카오스적인 동역학인데도
+  그렇습니다. 똑같은 시나리오를 기존 ROS end-to-end 경로(컨트롤러는 여전히
+  없어서 DDS/`joint_state_broadcaster` 계층만 추가됨)로 돌리면 실제로 작지만
+  0이 아닌 편차가 나타납니다(`overshoot_q1_deg`가 223.19°~227.64°, N=3).
+  **물리 솔버는 결정론적입니다 — 이 프로젝트가 지금까지 관측한 모든
+  run-to-run 변동은 물리가 아니라 ROS2/DDS/controller 계층에서 비롯됩니다**
+  — 증상을 하나씩 고치며 추론한 게 아니라 직접 측정으로 확인한 결과입니다.
+
+전체 조사 기록과 증거는 `tasks/INFRA-001-verdict-taxonomy/`,
+`tasks/INFRA-002-readiness-gate/`, `tasks/INFRA-003-run-isolation/`,
+`tasks/PHYS-001-physics-only-harness/` 참고.
 
 ## 알려진 한계: PD 게인 튜닝
 
@@ -103,11 +147,28 @@ N=7 clean run) 결과: `overshoot_q1_deg`가 이제 최대 **0.08도**
 안 닫힌 문제입니다. 진자는 실제로 눈으로 보이게 직립 안정화됩니다 —
 Phase 2에서 PD와 LQR 둘 다 Gazebo GUI로 확인했습니다 — 남은 문제는
 "서 있긴 하나"가 아니라 *자동화된, 정량적* 판정 기준을 안정적으로
-통과하는 것입니다.
+통과하는 것입니다. `PHYS-001`(위 [실험 유효성 계층](#실험-유효성-계층)
+참고)이 나중에 확인한 바로는, ROS2/DDS/controller 계층에만 있는 별도의
+작은(~4.45°) 진짜 편차도 있습니다 — 어느 세부 계층이 원인인지는 아직
+더 안 나눴고(잘 정의된 후속 과제), 위의 게인 튜닝 문제와는 별개입니다.
+
+`REFACTOR-001`은 관련되지만 다른 위험을 닫았습니다: plant의 물리
+파라미터(질량, 길이, damping, 토크 한계)와 LQR 게인 설계가 예전엔 각자
+독립적으로 값을 하드코딩하고 있어서 둘이 어긋나도 아무것도 막지
+않았습니다. 이제 둘 다 `plant_params.yaml` 하나를 읽고,
+`lqr_node.py`는 그 파일이 바뀐 뒤 캐시된 게인을 재생성하지 않으면
+(조용히 잘못된 게인으로 도는 대신) 명확한 `STALE GAIN` 에러로 실행 자체를
+거부합니다 — 설계만 한 게 아니라 직접 테스트해서 확인했습니다. 이걸
+기억해야 할 규칙으로 인코딩하고 있던 candidate skill
+(`SKILL-CONTROL-MODEL-CONSISTENCY`, 위에서 언급한 두 번 REJECT된 그
+skill — `HARNESS-001` 참고)은 이제 정식으로 retired 상태입니다, 그
+규칙이 구조적으로 더는 필요 없어졌기 때문입니다.
 
 전체 조사 기록은 `tasks/CTRL-003-pd-reproducibility/`,
 `tasks/CTRL-004-statistical-acceptance/`,
-`tasks/CTRL-005-run-reproducibility/` 참고.
+`tasks/CTRL-005-run-reproducibility/`,
+`tasks/PHYS-001-physics-only-harness/`,
+`tasks/REFACTOR-001-plant-single-source/` 참고.
 
 ## 레포 구조: 실제 코드는 어디 있나
 
@@ -154,9 +215,10 @@ HARNESS-001의 REJECT 결정, 이 README 자체의 "알려진 한계" 서술 방
 
 - `tasks/<ID>-.../` — 완료된 에이전틱 task마다 하나의 디렉토리:
   `specification.yaml`(목표, 허용/금지 변경, acceptance criteria),
-  `PLAN.md`, `result.json`, `trajectory.jsonl`, `evidence/`. Phase 7
-  기준 12개 task 완료(`CTRL-001`–`005`, `TOOL-001`, `BENCH-001`–`003`,
-  `HARNESS-001`, `SEC-001`–`002`).
+  `PLAN.md`, `result.json`, `trajectory.jsonl`, `evidence/`. 현재까지
+  17개 task 완료(`CTRL-001`–`005`, `TOOL-001`, `BENCH-001`–`003`,
+  `HARNESS-001`, `SEC-001`–`002`, `INFRA-001`–`003`, `PHYS-001`,
+  `REFACTOR-001`).
 - `harness/failure_store.py` / `categorize_failures.py` / `propose_skill.py`
   — 실패한 task들을 분류된 failure store로 바꾸고, 한 카테고리에 증거가
   충분히 쌓이면 candidate skill YAML을 생성합니다(자동 활성화는 절대
@@ -204,7 +266,13 @@ ros2 launch double_pendulum_description spawn.launch.py headless:=false
 
 # 2) 컨트롤러 (다른 터미널)
 ros2 run double_pendulum_control controller_node.py   # PD
-ros2 run double_pendulum_control lqr_node.py           # LQR (게인 계산에 ~1분)
+
+# LQR은 먼저 캐시된 게인이 필요합니다 (REFACTOR-001) -- 최초 1회, ~1분:
+ros2 run double_pendulum_control design_lqr_gains.py
+ros2 run double_pendulum_control lqr_node.py           # 캐시 로드, 수 초 안에 시작
+# (plant_params.yaml이 캐시 생성 이후 바뀌었으면 lqr_node.py가 STALE GAIN
+# 에러로 실행 자체를 거부합니다 -- design_lqr_gains.py를 다시 돌리거나,
+# -p auto_design:=true로 인라인 재계산(~1분)하도록 우회 가능)
 
 # 3) 수동 외란 테스트 (다른 터미널)
 ros2 run double_pendulum_eval disturbance.py --tau1 15.0 --duration 0.3

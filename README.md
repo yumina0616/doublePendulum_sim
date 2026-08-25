@@ -2,6 +2,10 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
+**Portfolio site**: [bright-muffin-5e2b3e.netlify.app](https://bright-muffin-5e2b3e.netlify.app)
+— visualized results and diagrams, same honesty standard as this README (open
+problems included, not smoothed over).
+
 A control engineering project that stabilizes a **fully actuated** 2-DOF
 double pendulum in the fully inverted (upright) configuration using ROS2
 (Humble) + Gazebo Sim (Harmonic) — with an agentic engineering layer on top:
@@ -59,7 +63,7 @@ Gazebo data — see [Phase 6](#current-status) below for the honest result
 | 0 — Environment setup | ROS2 Humble + Gazebo Harmonic in WSL2 | ✅ done |
 | 1 — Plant | URDF/Xacro double pendulum, Gazebo spawn, joint state/torque I/O | ✅ done |
 | 2 — Classical control | PD, linearization, LQR, initial-condition/disturbance tests | ✅ done — see [limitation](#known-limitation-pd-gain-tuning) below |
-| 3 — Automated evaluation harness | Simulation → metrics → `result.json` pass/fail, regression suite | ✅ done — it correctly caught Phase 2's open issue rather than masking it (see limitation below); still binary pass/fail, doesn't yet distinguish a control failure from an infra failure |
+| 3 — Automated evaluation harness | Simulation → metrics → `result.json` pass/fail, regression suite | ✅ done — it correctly caught Phase 2's open issue rather than masking it (see limitation below); now splits every run into 4 verdicts (`PASS_CONTROL`/`FAIL_CONTROL`/`INVALID_INFRA`/`FAIL_HARNESS`) instead of a plain pass/fail — see [Experiment validity layer](#experiment-validity-layer) below |
 | 4 — Basic coding agent | Task spec → PLAN.md → code change → build → sim → verify | ✅ 5 tasks completed (`CTRL-001`–`CTRL-005`) |
 | 5 — Tool architecture | Structured robotics tools vs. raw bash | 🟨 5/6 done (ROS graph inspection, run comparison, etc.); bash-vs-structured-tools ablation deferred |
 | 6 — Self-evolving harness | failure store → categorize → propose skill → regression-gated promote/reject | ✅ MVP done — one real skill proposed and evaluated end to end, honestly **REJECTed twice** (N=3, then N=8) — see below |
@@ -67,6 +71,50 @@ Gazebo data — see [Phase 6](#current-status) below for the honest result
 
 Every phase above is backed by a task directory under `tasks/` (spec, plan,
 result, evidence) — this isn't a status claim without a paper trail.
+
+## Experiment validity layer
+
+Three follow-on tasks (`INFRA-001`–`003`) made the harness's own
+measurements trustworthy enough to build further control work on, plus one
+task (`PHYS-001`) that finally answered where this project's run-to-run
+variance actually lives:
+
+- **`INFRA-001`** — a plain pass/fail bool used to conflate "the controller
+  genuinely failed" with "the experiment never validly ran at all" (zero
+  torque, zero samples, a discovery timeout). Every run now gets one of 4
+  verdicts (`PASS_CONTROL`/`FAIL_CONTROL`/`INVALID_INFRA`/`FAIL_HARNESS`),
+  and `pass_rate` is computed only over the first two — infra/harness
+  failure rates are tracked separately instead of silently poisoning the
+  control-quality number.
+- **`INFRA-002`** — replaced the remaining ad hoc `sleep`s in
+  `run_clean_experiment.sh` with explicit polls against real readiness
+  signals (`/clock` advancing, `ros2 control list_controllers` reporting
+  `active`, publisher+subscriber both connected). Caught a real infra
+  failure live during its own verification run — a FastRTPS `/dev/shm`
+  accumulation issue `CTRL-005` had already documented as a known factor.
+- **`INFRA-003`** — every run/batch now gets an isolated
+  `results/raw/<run_id>/` output directory (never overwritten by a later
+  run) plus an environment manifest (ROS distro, Gazebo version,
+  timestep/solver settings). A planned per-run `ROS_DOMAIN_ID` rotation was
+  implemented, tested, and **reverted** after direct measurement showed it
+  reliably breaks `/clock` discovery in this project's specific
+  WSL2+Gazebo+Humble combination — documented rather than silently kept.
+- **`PHYS-001`** — the actual payoff. A new harness drives Gazebo entirely
+  through gz-transport (pause/step/wrench/pose — never ROS2/DDS) and
+  replays the same disturbance profile open-loop. Result, N=3 independent
+  Gazebo relaunches: **bit-for-bit identical trajectories** (max difference
+  0.0 rad across 120 samples/run), even under genuinely chaotic,
+  uncontrolled dynamics. The *same* scenario run through the existing ROS
+  end-to-end path (no controller, so only the DDS/`joint_state_broadcaster`
+  layer is added) shows a real, small, nonzero spread instead (`overshoot_q1_deg`
+  ranging 223.19°–227.64°, N=3). **The physics solver is deterministic —
+  every instance of run-to-run variance this project has observed traces to
+  the ROS2/DDS/controller layer, not physics**, confirmed by direct
+  measurement rather than inferred from fixing symptoms one at a time.
+
+See `tasks/INFRA-001-verdict-taxonomy/`, `tasks/INFRA-002-readiness-gate/`,
+`tasks/INFRA-003-run-isolation/`, and `tasks/PHYS-001-physics-only-harness/`
+for the full investigation trail and evidence.
 
 ## Known limitation: PD gain tuning
 
@@ -104,10 +152,29 @@ ordinary, well-posed gain-tuning gap (PD's decentralized law settles
 ~10–15% too slowly), not yet closed. The pendulum does visibly stabilize
 upright — confirmed interactively via the Gazebo GUI for both PD and LQR
 during Phase 2 — the open item is clearing the *automated, quantitative*
-acceptance threshold consistently, not "does it balance at all."
+acceptance threshold consistently, not "does it balance at all." `PHYS-001`
+(see [Experiment validity layer](#experiment-validity-layer) above) later
+confirmed there's also a separate, small (~4.45°), genuinely real spread
+that lives specifically in the ROS2/DDS/controller layer — not further
+sub-divided yet (which exact sub-layer contributes it is an open,
+well-scoped follow-up), and not the same thing as the gain-tuning gap
+above.
+
+`REFACTOR-001` closed a related but distinct risk: the plant's physical
+parameters (mass, length, damping, torque limits) and the LQR gain design
+used to each hardcode their own independent copy, with nothing enforcing
+they stayed in sync. Both now read a single `plant_params.yaml`, and
+`lqr_node.py` hard-refuses to start (a specific `STALE GAIN` error, not a
+silent wrong-gain run) if that file changes without the cached gain being
+regenerated — verified directly, not just designed. The candidate skill
+that used to encode this as a rule to remember
+(`SKILL-CONTROL-MODEL-CONSISTENCY`, the same one REJECTed twice — see the
+opening summary above and `HARNESS-001`) is now formally retired, since
+the rule is structurally unnecessary.
 
 See `tasks/CTRL-003-pd-reproducibility/`, `tasks/CTRL-004-statistical-acceptance/`,
-and `tasks/CTRL-005-run-reproducibility/` for the full investigation trail.
+`tasks/CTRL-005-run-reproducibility/`, `tasks/PHYS-001-physics-only-harness/`,
+and `tasks/REFACTOR-001-plant-single-source/` for the full investigation trail.
 
 ## Repo layout: where the actual code lives
 
@@ -156,8 +223,9 @@ rejected or qualified rather than reported as clean wins.
 - `tasks/<ID>-.../` — one directory per completed agentic task:
   `specification.yaml` (goal, allowed/forbidden changes, acceptance
   criteria), `PLAN.md`, `result.json`, `trajectory.jsonl`, `evidence/`.
-  12 tasks completed as of Phase 7 (`CTRL-001`–`005`, `TOOL-001`,
-  `BENCH-001`–`003`, `HARNESS-001`, `SEC-001`–`002`).
+  17 tasks completed to date (`CTRL-001`–`005`, `TOOL-001`,
+  `BENCH-001`–`003`, `HARNESS-001`, `SEC-001`–`002`, `INFRA-001`–`003`,
+  `PHYS-001`, `REFACTOR-001`).
 - `harness/failure_store.py` / `categorize_failures.py` / `propose_skill.py`
   — turns failed tasks into a categorized failure store and, once a category
   has enough evidence, a candidate skill YAML (never auto-activated).
@@ -208,7 +276,13 @@ ros2 launch double_pendulum_description spawn.launch.py headless:=false
 
 # 2) Controller (separate terminal)
 ros2 run double_pendulum_control controller_node.py   # PD
-ros2 run double_pendulum_control lqr_node.py           # LQR (gain design takes ~1 min)
+
+# LQR needs a cached gain first (REFACTOR-001) -- one-time, ~1 min:
+ros2 run double_pendulum_control design_lqr_gains.py
+ros2 run double_pendulum_control lqr_node.py           # loads the cache, starts in ~seconds
+# (lqr_node.py refuses to start with a STALE GAIN error if plant_params.yaml
+# changed since the cache was last generated -- re-run design_lqr_gains.py,
+# or pass -p auto_design:=true to compute inline instead, ~1 min)
 
 # 3) Manual disturbance test (separate terminal)
 ros2 run double_pendulum_eval disturbance.py --tau1 15.0 --duration 0.3
