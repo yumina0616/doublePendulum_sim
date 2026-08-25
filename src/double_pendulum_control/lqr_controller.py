@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from scipy.linalg import solve_continuous_are
 
 from linear_model import DoublePendulum, linearize
+from plant_params import load_plant_params
 
 
 @dataclass
@@ -68,7 +69,16 @@ def design_lqr(q_diag=(50.0, 50.0, 5.0, 5.0, 10.0, 10.0), r_diag=(0.05, 0.05),
     Q = np.diag(q_diag)
     R = np.diag(r_diag)
     K = lqr_gain(A_aug, B_aug, Q, R)
-    return LQRGains(K=K)
+    # REFACTOR-001: torque saturation limits now come from the same
+    # plant_params.yaml the plant model itself was built from (or from
+    # params.tau1_max/tau2_max if the caller passed a PendulumParams-like
+    # object with those set) -- previously LQRGains' own dataclass
+    # defaults (60.0/30.0) were used unconditionally and never actually
+    # checked against anything, a silent third copy of these numbers.
+    plant = load_plant_params()
+    tau1_max = getattr(params, "tau1_max", None) or plant["tau1_max"]
+    tau2_max = getattr(params, "tau2_max", None) or plant["tau2_max"]
+    return LQRGains(K=K, tau1_max=tau1_max, tau2_max=tau2_max)
 
 
 def lqr_torque(gains: LQRGains, q1, q2, q1d, q2d, qi1, qi2):

@@ -1,0 +1,23 @@
+# REFACTOR-001: single source of truth for the double pendulum's physical
+# parameters. Both double_pendulum.urdf.xacro (via xacro.load_yaml) and
+# the Python control code (via plant_params.py) read this file directly
+# -- neither hardcodes its own copy of these numbers anymore. Changing a
+# value here changes both the simulated plant (after a rebuild) and the
+# LQR gain design's assumed plant at the same time, from the same file.
+#
+# joint_damping1/2 is the same physical quantity linear_model.py calls
+# b1/b2 (viscous joint damping) -- named to match the URDF/xacro side
+# here since that's the more descriptive name; plant_params.py maps it
+# to b1/b2 when constructing PendulumParams.
+
+m1: 1.0
+m2: 1.0
+L1: 1.0
+L2: 1.0
+rod_radius: 0.02
+joint_damping1: 0.05
+joint_damping2: 0.05
+tau1_max: 60.0
+tau2_max: 30.0
+qd_max: 50.0
+g: 9.81

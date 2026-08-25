@@ -11,16 +11,25 @@
     which is what Stage A (open-loop check) is supposed to show.
   -->
 
-  <xacro:property name="m1" value="1.0"/>
-  <xacro:property name="m2" value="1.0"/>
-  <xacro:property name="L1" value="1.0"/>
-  <xacro:property name="L2" value="1.0"/>
-  <xacro:property name="rod_radius" value="0.02"/>
-  <xacro:property name="joint_damping1" value="0.05"/>
-  <xacro:property name="joint_damping2" value="0.05"/>
-  <xacro:property name="tau1_max" value="60.0"/>
-  <xacro:property name="tau2_max" value="30.0"/>
-  <xacro:property name="qd_max" value="50.0"/>
+  <!-- REFACTOR-001: single source of truth is
+       double_pendulum_description/config/plant_params.yaml, also read
+       directly by plant_params.py on the Python/control side, so this
+       xacro and the LQR gain design can never independently drift out
+       of sync (that drift is exactly what SKILL-CONTROL-MODEL-CONSISTENCY
+       existed to guard against as a remembered rule; see
+       harness/skills/retired/ for why it was retired once this made the
+       rule structurally unnecessary). -->
+  <xacro:property name="plant" value="${xacro.load_yaml('../config/plant_params.yaml')}"/>
+  <xacro:property name="m1" value="${plant['m1']}"/>
+  <xacro:property name="m2" value="${plant['m2']}"/>
+  <xacro:property name="L1" value="${plant['L1']}"/>
+  <xacro:property name="L2" value="${plant['L2']}"/>
+  <xacro:property name="rod_radius" value="${plant['rod_radius']}"/>
+  <xacro:property name="joint_damping1" value="${plant['joint_damping1']}"/>
+  <xacro:property name="joint_damping2" value="${plant['joint_damping2']}"/>
+  <xacro:property name="tau1_max" value="${plant['tau1_max']}"/>
+  <xacro:property name="tau2_max" value="${plant['tau2_max']}"/>
+  <xacro:property name="qd_max" value="${plant['qd_max']}"/>
 
   <material name="base_grey">
     <color rgba="0.35 0.35 0.35 1.0"/>

@@ -3,9 +3,14 @@ around the upright equilibrium, for LQR gain design.
 
 The nonlinear equations of motion are the same Lagrangian-derived model
 used by the original (pre-ROS2) matplotlib simulator at the project root
-(`dynamics.py`), ported here verbatim so the offline LQR design matches the
-same physical parameters as double_pendulum.urdf.xacro (m1=m2=1.0, L1=L2=1.0,
-b1=b2=0.05, g=9.81). Coordinate convention:
+(`dynamics.py`), ported here verbatim. REFACTOR-001: PendulumParams no
+longer hardcodes its own copy of m1/m2/L1/L2/damping/g -- by default it
+loads the same double_pendulum_description/config/plant_params.yaml that
+double_pendulum.urdf.xacro reads directly, so the offline LQR design and
+the simulated plant can never independently drift out of sync (that was
+exactly the risk SKILL-CONTROL-MODEL-CONSISTENCY existed to guard
+against as a remembered rule -- see harness/skills/retired/). Coordinate
+convention:
     q1 = link1 absolute angle from vertical (0 = upright)
     q2 = link2 angle relative to link1 (0 = also upright / in line)
 Fully actuated: both tau1, tau2 are control inputs (unlike the underactuated
@@ -18,16 +23,32 @@ import numpy as np
 import sympy as sp
 from dataclasses import dataclass
 
+from plant_params import load_plant_params
+
 
 @dataclass
 class PendulumParams:
-    m1: float = 1.0
-    m2: float = 1.0
-    L1: float = 1.0
-    L2: float = 1.0
-    b1: float = 0.05
-    b2: float = 0.05
-    g: float = 9.81
+    m1: float
+    m2: float
+    L1: float
+    L2: float
+    b1: float
+    b2: float
+    g: float
+
+    @classmethod
+    def from_plant_dict(cls, d: dict) -> "PendulumParams":
+        # joint_damping1/2 in plant_params.yaml is the same physical
+        # quantity this dataclass calls b1/b2 (viscous joint damping) --
+        # named to match the URDF/xacro side, mapped here on load.
+        return cls(
+            m1=d["m1"], m2=d["m2"], L1=d["L1"], L2=d["L2"],
+            b1=d["joint_damping1"], b2=d["joint_damping2"], g=d["g"],
+        )
+
+    @classmethod
+    def load(cls) -> "PendulumParams":
+        return cls.from_plant_dict(load_plant_params())
 
     def as_tuple(self):
         Lc1, Lc2 = self.L1 / 2.0, self.L2 / 2.0
@@ -102,7 +123,10 @@ def get_forward_dynamics():
 
 class DoublePendulum:
     def __init__(self, params: PendulumParams | None = None):
-        self.params = params or PendulumParams()
+        # no hardcoded fallback default -- if plant_params.yaml can't be
+        # loaded, this raises loudly instead of silently running against
+        # numbers that might not match what's actually spawned in Gazebo.
+        self.params = params or PendulumParams.load()
         self._f_qdd = get_forward_dynamics()
         self._p = self.params.as_tuple()
 

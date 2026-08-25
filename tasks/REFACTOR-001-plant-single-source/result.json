@@ -1,0 +1,43 @@
+{
+  "task_id": "REFACTOR-001",
+  "goal": "Make plant_params.yaml the single source for xacro and Python LQR gain design, add a hash-based stale-gain hard failure, retire SKILL-CONTROL-MODEL-CONSISTENCY",
+  "timestamp": "2026-08-25T15:20:00Z",
+  "changed_files": [
+    "double_pendulum_description/config/plant_params.yaml (new)",
+    "double_pendulum_description/urdf/double_pendulum.urdf.xacro (xacro.load_yaml instead of hardcoded properties)",
+    "double_pendulum_description/CMakeLists.txt (install config/)",
+    "double_pendulum_control/plant_params.py (new)",
+    "double_pendulum_control/linear_model.py (PendulumParams loads from plant_params.yaml)",
+    "double_pendulum_control/lqr_controller.py (design_lqr sources tau limits from plant_params.yaml)",
+    "double_pendulum_control/design_lqr_gains.py (new)",
+    "double_pendulum_control/lqr_node.py (loads gain cache, hard-fails on plant/weight mismatch)",
+    "double_pendulum_control/CMakeLists.txt",
+    ".gitignore",
+    "harness/skills/candidates/SKILL-CONTROL-MODEL-CONSISTENCY.yaml -> harness/skills/retired/"
+  ],
+  "verification": {
+    "xacro_processing": {"exit_code": 0, "mass_matches": true, "effort_matches": true, "damping_matches": true},
+    "cache_hit_path": {"gain_design_time_s": 18.4, "plant_hash": "564ef19e89ea8c2b", "K_matches_direct_computation": true},
+    "stale_gain_rejection": {
+      "edited": "m1: 1.0 -> 1.5, cache not regenerated",
+      "result": "lqr_node.py refused to start, exit 1, specific STALE GAIN error naming both hashes",
+      "recovery": "restored m1=1.0, regenerated cache, normal startup resumed"
+    },
+    "auto_design_escape_hatch": "confirmed reaches design_lqr/create_subscription instead of refusing",
+    "gazebo_integration_lqr": {"lqr_ready_after_s": 3, "previous_baseline_s": 54, "verdict": "FAIL_CONTROL", "note": "consistent with already-documented gain-quality gap, not a regression"},
+    "gazebo_integration_pd": {"verdict": "FAIL_CONTROL", "note": "consistent with prior baseline range"}
+  },
+  "acceptance_checks": {
+    "xacro_processes_cleanly_same_values": true,
+    "lqr_node_uses_cache_no_care_solve_at_startup": true,
+    "plant_change_without_cache_regen_hard_fails": true,
+    "cache_regen_restores_normal_startup": true,
+    "real_run_clean_experiment_both_controllers_reach_stage_4": true
+  },
+  "regression_checks": {
+    "pd_path_unaffected": true,
+    "lqr_path_produces_consistent_verdict": true
+  },
+  "passed": true,
+  "notes": "Two real xacro bugs found and fixed during implementation, not assumed to work: $(find pkg) doesn't nest inside a ${} Python-eval block (switched to a path relative to the xacro file's own directory); XML comments can't contain a literal '--' (broke on my own explanatory comment text, reworded). SKILL-CONTROL-MODEL-CONSISTENCY was never promoted to active (REJECTed candidate), so retiring it here is a direct status update, not a run through retire_skill.py's active-skill retirement-eval flow (which doesn't apply to a skill that was never trusted). Completes NEXT_STEPS.md items 3+4+6 as a coherent set; item 5 (ENV-001) remains separate and not-yet-started."
+}

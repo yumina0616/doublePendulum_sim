@@ -13,11 +13,11 @@ install(
 # directory to sys.path, so installing both to the same lib/ dir is enough
 # -- no need for a full ament_python package just for this).
 install(
-  PROGRAMS controller_node.py lqr_node.py
+  PROGRAMS controller_node.py lqr_node.py design_lqr_gains.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(
-  FILES pd_controller.py linear_model.py lqr_controller.py
+  FILES pd_controller.py linear_model.py lqr_controller.py plant_params.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

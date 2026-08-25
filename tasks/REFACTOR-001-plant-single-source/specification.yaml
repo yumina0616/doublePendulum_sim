@@ -1,0 +1,71 @@
+task_id: REFACTOR-001
+goal: >
+  private/NEXT_STEPS.md item 6: double_pendulum.urdf.xacro and
+  linear_model.py's PendulumParams each hardcoded their own independent
+  copy of m1/m2/L1/L2/damping/torque-limit values, with nothing enforcing
+  they stayed in sync -- exactly the risk SKILL-CONTROL-MODEL-CONSISTENCY
+  (REJECTed candidate, HARNESS-001) was written to guard against as a
+  remembered procedure. Make plant_params.yaml the single source both
+  sides read directly, and add a hash-based staleness check so a
+  plant/gain mismatch is a hard runtime failure, not a silently wrong
+  controller -- turning a "rule to remember" into a "state the system
+  can't represent."
+
+allowed_changes:
+  - double_pendulum_description/config/plant_params.yaml (new -- single
+    source for m1/m2/L1/L2/rod_radius/joint_damping1/2/tau1_max/tau2_max/
+    qd_max/g)
+  - double_pendulum_description/urdf/double_pendulum.urdf.xacro (reads
+    plant_params.yaml via xacro.load_yaml instead of hardcoded
+    xacro:property values)
+  - double_pendulum_description/CMakeLists.txt (install config/)
+  - double_pendulum_control/plant_params.py (new -- shared loader +
+    deterministic hash function)
+  - double_pendulum_control/linear_model.py (PendulumParams loads from
+    plant_params.yaml by default instead of hardcoded dataclass defaults)
+  - double_pendulum_control/lqr_controller.py (design_lqr sources
+    tau1_max/tau2_max from plant_params.yaml instead of LQRGains'
+    previously-unverified hardcoded defaults)
+  - double_pendulum_control/design_lqr_gains.py (new -- precomputes and
+    caches the LQR gain, keyed by plant_hash + q_diag + r_diag)
+  - double_pendulum_control/lqr_node.py (loads the gain cache instead of
+    computing inline every startup; refuses to start on a plant_hash or
+    Q/R mismatch instead of silently recomputing or using a stale gain;
+    --auto-design escape hatch for the old always-inline behavior)
+  - double_pendulum_control/CMakeLists.txt (install plant_params.py,
+    design_lqr_gains.py)
+  - .gitignore (generated lqr_gain_cache.json)
+  - harness/skills/candidates/SKILL-CONTROL-MODEL-CONSISTENCY.yaml ->
+    harness/skills/retired/ (this refactor makes its procedure
+    structurally unnecessary; retirement reason recorded in the YAML)
+
+forbidden_changes:
+  - this specification.yaml
+  - any scenario's acceptance criteria
+  - the actual numeric values of m1/m2/L1/L2/damping/torque-limits
+    (plant_params.yaml must contain the SAME numbers the old hardcoded
+    copies had -- this is a refactor of where the truth lives, not a
+    change to the truth itself)
+  - pd_controller.py (PD doesn't consume plant_params.yaml directly;
+    out of scope)
+
+acceptance:
+  - double_pendulum.urdf.xacro processes cleanly via `xacro` standalone
+    and produces the same numeric values (mass/effort/damping) as before
+  - a real Gazebo launch + lqr_node.py run reaches "LQR ready" using the
+    cached gain (no ~1min CARE solve at startup)
+  - editing plant_params.yaml (e.g. m1) WITHOUT regenerating the gain
+    cache makes lqr_node.py refuse to start with a specific "STALE GAIN"
+    error and nonzero exit, not a silent wrong-gain run
+  - regenerating the cache (design_lqr_gains.py) after such an edit
+    restores normal startup
+  - a real run_clean_experiment.sh run for both pd and lqr still reaches
+    stage [4/4] and produces a genuine result.json
+
+regression:
+  - PD and LQR paths both still complete a real Gazebo experiment run
+    with the same acceptance-criteria behavior as before this refactor
+    (same physical numbers, so results should be consistent with
+    CTRL-005/INFRA-00x's already-established baseline, not identical
+    bit-for-bit given ROS end-to-end's own known small variance -- see
+    PHYS-001)

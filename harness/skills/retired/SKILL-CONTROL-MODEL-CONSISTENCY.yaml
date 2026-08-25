@@ -1,0 +1,61 @@
+id: SKILL-CONTROL-MODEL-CONSISTENCY
+
+trigger:
+  changed_files:
+    - "*.urdf"
+    - "*.xacro"
+    - "*model_params*"
+
+procedure:
+  - detect plant parameter change
+  - regenerate linear model (linear_model.py's PendulumParams)
+  - recompute controller gain (lqr_controller.py design_lqr)
+  - run nominal simulation
+  - run regression evaluation
+
+reason: >
+  Controller matrices (LQR K, PD gains if re-tuned) depend on the plant's mass/length parameters through the linearized model. Changing the plant definition without regenerating that model leaves the controller acting on a stale, now-incorrect physical model.
+
+evidence:
+  - BENCH-001
+  - BENCH-003
+
+status: retired
+created_from:
+  - BENCH-001
+  - BENCH-003
+created_at: 2026-08-21
+last_verified: None
+activation_count: 0
+success_after_activation: 0
+negative_regression_count: 0
+
+last_evaluation_decision: REJECT
+last_evaluation_reason: "candidate pass_rate 0.0 did not beat baseline pass_rate 0.0"
+last_evaluated_at: 2026-08-21
+
+retirement_reason: >
+  REFACTOR-001 (2026-08-25) eliminated the underlying risk this skill was
+  written to guard against by remembered procedure. Before that task,
+  double_pendulum.urdf.xacro and linear_model.py's PendulumParams each
+  hardcoded their own independent copy of m1/m2/L1/L2/damping/torque-limit
+  values -- this skill's procedure was "remember to update both and
+  regenerate the gain whenever one changes," which is exactly the kind
+  of rule NEXT_STEPS.md's item 6 called "a harness that expects the agent
+  not to make mistakes, not a harness that makes the wrong state
+  unrepresentable." REFACTOR-001 made both sides read the same single
+  source (double_pendulum_description/config/plant_params.yaml, via
+  xacro.load_yaml on the URDF side and plant_params.py on the Python
+  side), so there is no longer a second copy that can independently
+  drift. It additionally added a hard runtime check (lqr_node.py's gain
+  cache, keyed by plant_params.yaml's hash) that refuses to start rather
+  than silently run a stale gain if plant_params.yaml changes without
+  design_lqr_gains.py being re-run -- verified directly: editing m1 in
+  plant_params.yaml without regenerating the cache produced an immediate
+  "STALE GAIN" error and a nonzero exit, not a silent wrong-gain run.
+  This candidate was never promoted to active (REJECTed by HARNESS-001's
+  N=3 evaluation) and is retired here rather than left in candidates/,
+  since the rule it encodes is now structurally enforced by code instead
+  of needing to be remembered by a human or agent.
+retired_at: 2026-08-25
+retired_by: REFACTOR-001
