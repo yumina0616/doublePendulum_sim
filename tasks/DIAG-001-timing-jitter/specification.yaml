@@ -1,0 +1,71 @@
+task_id: DIAG-001
+goal: >
+  private/LQI_ROOT_CAUSE_PLAN.md Task A: measure whether real ROS2/DDS
+  timing jitter actually exists around the two nominal periods this
+  project's LQI control loop depends on -- controller_manager's 200Hz
+  update_rate (5ms, governs /joint_states publish timing) and
+  lqr_node.py's own 100Hz control timer (10ms, governs
+  /effort_controller/commands publish timing). This is a cheap
+  measure-first step before building PHYS-002 (closed-loop
+  physics-only harness): it establishes whether the jitter hypothesis
+  for LQI's slow settling (measured ~3.3-3.4s vs. the offline linear
+  model's predicted ~0.63s) is even plausible, without yet attempting
+  to isolate causation.
+
+allowed_changes:
+  - tasks/DIAG-001-timing-jitter/scripts/measure_jitter.py (new -- a
+    standalone rclpy node, not part of any ROS2 package, subscribes to
+    /joint_states and /effort_controller/commands and records real
+    wall-clock (time.monotonic()) arrival timestamps for each, plus
+    each JointState message's header.stamp sim-time for reference)
+  - tasks/DIAG-001-timing-jitter/scripts/run_diag001.sh (new --
+    orchestrates N clean LQR/nominal_balance runs via the existing,
+    unmodified run_clean_experiment.sh, launching measure_jitter.py
+    concurrently with each run's active experiment window)
+  - tasks/DIAG-001-timing-jitter/scripts/compute_jitter_stats.py (new
+    -- aggregates the N raw per-run timestamp files into interval/
+    jitter statistics: mean, std, p95/p99 deviation from nominal
+    period, max abs deviation, per topic)
+  - double_pendulum_eval/scripts/run_clean_experiment.sh (unplanned,
+    user-approved deviation: this WSL2 boot session's shared ros2cli
+    daemon reliably crashes the moment this project's ROS graph
+    launches -- 5/5 consecutive clean attempts, confirmed via direct
+    probing that Gazebo itself is fine throughout (gz-transport /clock
+    keeps advancing) -- which made every run_clean_experiment.sh
+    invocation abort at its own /clock readiness check before DIAG-001
+    could record anything. Fixed by adding --no-daemon to the two
+    ros2 topic echo/info calls and replacing the ros2 control
+    list_controllers call (no --no-daemon flag exists for that verb)
+    with a small inline rclpy script that calls the ListControllers
+    service directly. See the script's own updated header comment for
+    the full root-cause writeup. User approved this fix explicitly
+    when asked, since it blocked not just DIAG-001 but every
+    Gazebo/ROS2 experiment this session.)
+
+forbidden_changes:
+  - this specification.yaml
+  - double_pendulum_control/lqr_node.py, lqr_controller.py,
+    plant_params.py, controllers.yaml (read-only for this task --
+    DIAG-001 only measures existing behavior, does not change it)
+  - run_clean_experiment.sh's actual experiment logic/launch sequence
+    (only the daemon-dependent readiness-check internals changed --
+    see allowed_changes above; the launch order, teardown, and
+    result.json-writing behavior are all unchanged)
+  - any scenario's acceptance criteria
+
+acceptance:
+  - N=5 real LQR/nominal_balance runs, each with a concurrently-recorded
+    raw timestamp file for /joint_states and /effort_controller/commands
+    arrivals
+  - per-topic jitter statistics (mean interval, std, p95 deviation, max
+    abs deviation from the nominal period) computed and saved to
+    tasks/DIAG-001-timing-jitter/evidence/jitter_stats.json
+  - a plain, non-prejudged statement of whether the measured jitter is
+    small (e.g. std < 0.5ms) or non-trivial (e.g. std > 2ms) relative to
+    the 5ms/10ms nominal periods -- per LQI_ROOT_CAUSE_PLAN.md's explicit
+    instruction, the significance judgment itself is deferred to PHYS-002,
+    not decided here
+
+regression:
+  - none (net-new, read-only diagnostic scripts; does not touch any
+    existing controller/eval source file)

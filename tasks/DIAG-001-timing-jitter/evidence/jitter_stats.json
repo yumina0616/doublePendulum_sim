@@ -1,0 +1,199 @@
+{
+  "n_runs": 5,
+  "per_run": [
+    {
+      "file": "run_1_raw_timestamps.json",
+      "joint_states": {
+        "n_samples": 1344,
+        "n_intervals": 1343,
+        "nominal_period_ms": 5.0,
+        "mean_interval_ms": 5.009562940431858,
+        "std_interval_ms": 0.42964227181204867,
+        "min_interval_ms": 3.3711469999957444,
+        "max_interval_ms": 8.262801999990188,
+        "mean_abs_deviation_ms": 0.290054708116013,
+        "std_abs_deviation_ms": 0.31709966549533924,
+        "p95_abs_deviation_ms": 0.9185064999976474,
+        "p99_abs_deviation_ms": 1.4946495600059926,
+        "max_abs_deviation_ms": 3.262801999990188
+      },
+      "commands": {
+        "n_samples": 674,
+        "n_intervals": 673,
+        "nominal_period_ms": 10.0,
+        "mean_interval_ms": 9.999964112927165,
+        "std_interval_ms": 0.4302791462407263,
+        "min_interval_ms": 8.288417999978037,
+        "max_interval_ms": 12.160995000016328,
+        "mean_abs_deviation_ms": 0.3012168588418718,
+        "std_abs_deviation_ms": 0.3072597417934314,
+        "p95_abs_deviation_ms": 0.9392590000084053,
+        "p99_abs_deviation_ms": 1.3334180000021187,
+        "max_abs_deviation_ms": 2.160995000016328
+      },
+      "joint_states_sim_vs_wall": {
+        "mean_sim_interval_ms": 5.000000000000001,
+        "mean_wall_interval_ms": 5.009562940431858
+      }
+    },
+    {
+      "file": "run_2_raw_timestamps.json",
+      "joint_states": {
+        "n_samples": 1418,
+        "n_intervals": 1417,
+        "nominal_period_ms": 5.0,
+        "mean_interval_ms": 5.095998824982373,
+        "std_interval_ms": 0.7528494325641779,
+        "min_interval_ms": 3.240470999998024,
+        "max_interval_ms": 14.300042999991547,
+        "mean_abs_deviation_ms": 0.33042076993676417,
+        "std_abs_deviation_ms": 0.6832423854713618,
+        "p95_abs_deviation_ms": 0.8774212000059834,
+        "p99_abs_deviation_ms": 3.3294431599915484,
+        "max_abs_deviation_ms": 9.300042999991545
+      },
+      "commands": {
+        "n_samples": 723,
+        "n_intervals": 722,
+        "nominal_period_ms": 10.0,
+        "mean_interval_ms": 10.000948198060954,
+        "std_interval_ms": 0.40046248207504476,
+        "min_interval_ms": 7.218717000000652,
+        "max_interval_ms": 13.27159199999528,
+        "mean_abs_deviation_ms": 0.244117267313687,
+        "std_abs_deviation_ms": 0.3174552857152739,
+        "p95_abs_deviation_ms": 0.6545697000001369,
+        "p99_abs_deviation_ms": 1.3946678400115602,
+        "max_abs_deviation_ms": 3.2715919999952803
+      },
+      "joint_states_sim_vs_wall": {
+        "mean_sim_interval_ms": 5.000000000000001,
+        "mean_wall_interval_ms": 5.095998824982373
+      }
+    },
+    {
+      "file": "run_3_raw_timestamps.json",
+      "joint_states": {
+        "n_samples": 1474,
+        "n_intervals": 1473,
+        "nominal_period_ms": 5.0,
+        "mean_interval_ms": 5.009233518669386,
+        "std_interval_ms": 0.3543433167576614,
+        "min_interval_ms": 3.4726730000045336,
+        "max_interval_ms": 8.478969000009329,
+        "mean_abs_deviation_ms": 0.23793006856781454,
+        "std_abs_deviation_ms": 0.2627427001253381,
+        "p95_abs_deviation_ms": 0.7323568000049356,
+        "p99_abs_deviation_ms": 1.232991440002979,
+        "max_abs_deviation_ms": 3.4789690000093287
+      },
+      "commands": {
+        "n_samples": 739,
+        "n_intervals": 738,
+        "nominal_period_ms": 10.0,
+        "mean_interval_ms": 9.999330833333335,
+        "std_interval_ms": 0.36636923489116063,
+        "min_interval_ms": 8.369917000010219,
+        "max_interval_ms": 11.599068000009538,
+        "mean_abs_deviation_ms": 0.262350177506157,
+        "std_abs_deviation_ms": 0.2557327675939283,
+        "p95_abs_deviation_ms": 0.7770132000068202,
+        "p99_abs_deviation_ms": 1.2713303799891151,
+        "max_abs_deviation_ms": 1.6300829999897817
+      },
+      "joint_states_sim_vs_wall": {
+        "mean_sim_interval_ms": 5.000000000000001,
+        "mean_wall_interval_ms": 5.009233518669386
+      }
+    },
+    {
+      "file": "run_4_raw_timestamps.json",
+      "joint_states": {
+        "n_samples": 1135,
+        "n_intervals": 1134,
+        "nominal_period_ms": 5.0,
+        "mean_interval_ms": 5.070248828042313,
+        "std_interval_ms": 0.582808467092967,
+        "min_interval_ms": 3.7805399999797373,
+        "max_interval_ms": 11.77962799999932,
+        "mean_abs_deviation_ms": 0.3467272583770012,
+        "std_abs_deviation_ms": 0.4736885215570888,
+        "p95_abs_deviation_ms": 0.9281480500107475,
+        "p99_abs_deviation_ms": 1.5804323499861568,
+        "max_abs_deviation_ms": 6.77962799999932
+      },
+      "commands": {
+        "n_samples": 467,
+        "n_intervals": 466,
+        "nominal_period_ms": 10.0,
+        "mean_interval_ms": 9.82621999785405,
+        "std_interval_ms": 1.3221719313842544,
+        "min_interval_ms": 0.4911800000115818,
+        "max_interval_ms": 13.062533000010035,
+        "mean_abs_deviation_ms": 0.4850311738195514,
+        "std_abs_deviation_ms": 1.242208865573517,
+        "p95_abs_deviation_ms": 0.9802597499819401,
+        "p99_abs_deviation_ms": 9.367417750011102,
+        "max_abs_deviation_ms": 9.508819999988418
+      },
+      "joint_states_sim_vs_wall": {
+        "mean_sim_interval_ms": 5.000000000000002,
+        "mean_wall_interval_ms": 5.070248828042313
+      }
+    },
+    {
+      "file": "run_5_raw_timestamps.json",
+      "joint_states": {
+        "n_samples": 1343,
+        "n_intervals": 1342,
+        "nominal_period_ms": 5.0,
+        "mean_interval_ms": 5.056281692250336,
+        "std_interval_ms": 0.6879632818491734,
+        "min_interval_ms": 1.0202939999999217,
+        "max_interval_ms": 13.607083000010789,
+        "mean_abs_deviation_ms": 0.3956690842035532,
+        "std_abs_deviation_ms": 0.5656032901785211,
+        "p95_abs_deviation_ms": 1.0502634500239767,
+        "p99_abs_deviation_ms": 2.2201226700284202,
+        "max_abs_deviation_ms": 8.607083000010787
+      },
+      "commands": {
+        "n_samples": 680,
+        "n_intervals": 679,
+        "nominal_period_ms": 10.0,
+        "mean_interval_ms": 9.9997335861561,
+        "std_interval_ms": 0.5703185469379329,
+        "min_interval_ms": 6.507183999985955,
+        "max_interval_ms": 13.300389999983508,
+        "mean_abs_deviation_ms": 0.38536360677513337,
+        "std_abs_deviation_ms": 0.4204262200802798,
+        "p95_abs_deviation_ms": 1.027984000038487,
+        "p99_abs_deviation_ms": 2.4070868200243263,
+        "max_abs_deviation_ms": 3.492816000014045
+      },
+      "joint_states_sim_vs_wall": {
+        "mean_sim_interval_ms": 5.000000000000001,
+        "mean_wall_interval_ms": 5.056281692250336
+      }
+    }
+  ],
+  "aggregate": {
+    "joint_states_std_interval_ms_across_runs": [
+      0.42964227181204867,
+      0.7528494325641779,
+      0.3543433167576614,
+      0.582808467092967,
+      0.6879632818491734
+    ],
+    "commands_std_interval_ms_across_runs": [
+      0.4302791462407263,
+      0.40046248207504476,
+      0.36636923489116063,
+      1.3221719313842544,
+      0.5703185469379329
+    ],
+    "joint_states_mean_of_std_ms": 0.5615213540152058,
+    "commands_mean_of_std_ms": 0.6179202683058238
+  },
+  "note": "jitter significance is NOT judged here -- see PLAN.md / private/LQI_ROOT_CAUSE_PLAN.md Task B (PHYS-002) for interpretation."
+}

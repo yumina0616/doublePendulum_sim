@@ -164,9 +164,10 @@ GZ_PID=$!
 #   - /clock advancing: `ros2 topic echo /clock --once` yields
 #     `clock:\n  sec: N\n  nanosec: M`; read twice ~1s apart and require
 #     the nanosecond-resolution value to have strictly increased.
-#   - controller 'active': `ros2 control list_controllers` output is
-#     ANSI-colored; strip escape codes before grepping for
-#     "<name> ... active" on one line.
+#   - controller 'active': controller_manager's ListControllers service,
+#     called directly via a throwaway rclpy node (see
+#     _list_controllers_direct below) -- output printed as
+#     "<name> <type> <state>" per line, grepped for "<name> ... active".
 #   - pub+sub actually connected (not just "a publisher exists somewhere"):
 #     `ros2 topic info --verbose <topic>` reports "Publisher count: N" and
 #     "Subscription count: N" as separate lines -- require both >= 1.
@@ -175,8 +176,31 @@ GZ_PID=$!
 # timestamp check: this script already guarantees it structurally by
 # fully pkilling and relaunching Gazebo (and therefore resetting the sim
 # clock to 0) before every single run.
+#
+# DIAG-001 (2026-08-26): found, in this WSL2 boot session, that the
+# shared ros2cli daemon (the thing `ros2 topic echo`/`ros2 control
+# list_controllers` talk to by default) reliably crashes -- every one of
+# 5 consecutive clean attempts, including with a freshly-restarted daemon
+# each time -- the moment this project's ROS graph launches (11+ nodes
+# appearing/exiting in a burst: robot_state_publisher, parameter_bridge,
+# the create/spawner one-shot nodes, controller_manager). Every daemon
+# call afterward fails with `RuntimeError: !rclpy.ok()` (confirmed via
+# ros2cli.node.direct.DirectNode's source: the daemon keeps one such node
+# alive across calls, and something in that graph-churn burst kills its
+# rclpy context permanently). Direct evidence Gazebo itself is fine
+# throughout: `gz topic -e -t /clock` (gz-transport, bypassing ROS2
+# entirely) shows real advancing sim time the whole time.
+# Fix: `ros2 topic echo`/`ros2 topic info` both accept `--no-daemon`
+# (spins up their own throwaway rclpy context instead of using the
+# shared one) -- added below. `ros2 control list_controllers` has no
+# such flag (its argparse wiring omits it, unlike the topic verbs --
+# confirmed by reading ros2controlcli.verb.list_controllers's source),
+# so the controller-active check instead calls the ListControllers
+# service directly via a small inline rclpy script
+# (_list_controllers_direct), sidestepping ros2cli's daemon/NodeStrategy
+# machinery entirely.
 read_clock_ns() {
-  timeout 3 ros2 topic echo /clock --once 2>/dev/null | awk '
+  timeout 3 ros2 topic echo /clock --once --no-daemon 2>/dev/null | awk '
     /^clock:/ { f=1; next }
     f && /^[[:space:]]*sec:/ { sec=$2 }
     f && /^[[:space:]]*nanosec:/ { print (sec+0)*1000000000+($2+0); exit }
@@ -204,14 +228,41 @@ wait_for_clock_advancing() {
   return 1
 }
 
+# DIAG-001: bypasses ros2cli's NodeStrategy/daemon entirely (see the
+# header comment above) by talking to the ListControllers service with
+# a plain, one-shot rclpy node. Prints "<name> <type> <state>" per
+# controller -- same shape wait_for_controller_active's grep already
+# expected from the old `ros2 control list_controllers` output.
+_list_controllers_direct() {
+  timeout 5 python3 -c "
+import sys
+import rclpy
+from rclpy.node import Node
+from controller_manager_msgs.srv import ListControllers
+
+rclpy.init()
+node = Node('diag001_list_controllers_check')
+cli = node.create_client(ListControllers, '/controller_manager/list_controllers')
+if not cli.wait_for_service(timeout_sec=3.0):
+    node.destroy_node()
+    rclpy.shutdown()
+    sys.exit(0)
+future = cli.call_async(ListControllers.Request())
+rclpy.spin_until_future_complete(node, future, timeout_sec=3.0)
+if future.done() and future.result() is not None:
+    for c in future.result().controller:
+        print(f'{c.name} {c.type} {c.state}')
+node.destroy_node()
+rclpy.shutdown()
+" 2>/dev/null
+}
+
 wait_for_controller_active() {
   local name="$1"
   local timeout_s="$2"
   local waited=0
   while [ "$waited" -lt "$timeout_s" ]; do
-    if timeout 3 ros2 control list_controllers 2>/dev/null \
-        | sed -E 's/\x1b\[[0-9;]*m//g' \
-        | grep -qE "^${name}[[:space:]].*[[:space:]]active[[:space:]]*$"; then
+    if _list_controllers_direct | grep -qE "^${name}[[:space:]].*[[:space:]]active[[:space:]]*$"; then
       echo "  controller '$name' is active (after ${waited}s)"
       return 0
     fi
@@ -227,7 +278,7 @@ wait_for_topic_pub_and_sub() {
   local waited=0
   local info pub_count sub_count
   while [ "$waited" -lt "$timeout_s" ]; do
-    info=$(timeout 3 ros2 topic info --verbose "$topic" 2>/dev/null)
+    info=$(timeout 3 ros2 topic info --verbose "$topic" --no-daemon 2>/dev/null)
     pub_count=$(echo "$info" | grep -oE "Publisher count: [0-9]+" | grep -oE "[0-9]+")
     sub_count=$(echo "$info" | grep -oE "Subscription count: [0-9]+" | grep -oE "[0-9]+")
     if [ -n "$pub_count" ] && [ -n "$sub_count" ] && [ "$pub_count" -ge 1 ] && [ "$sub_count" -ge 1 ]; then
@@ -252,7 +303,7 @@ fi
 
 echo "  waiting for /joint_states to actually publish data (topic existing isn't enough --"
 echo "  GUI mode in particular can take a while past that before physics/bridge is really live)..."
-if timeout 60 ros2 topic echo /joint_states --once > /dev/null 2>&1; then
+if timeout 60 ros2 topic echo /joint_states --once --no-daemon > /dev/null 2>&1; then
   echo "  /joint_states is flowing"
 else
   echo "ERROR: no /joint_states data within 60s -- aborting instead of running" >&2
