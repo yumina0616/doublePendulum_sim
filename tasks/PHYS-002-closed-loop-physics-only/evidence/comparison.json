@@ -1,0 +1,54 @@
+{
+  "scenario": "nominal_balance",
+  "acceptance_threshold_settling_time_q1_s": 3.0,
+  "arms": {
+    "offline_prediction": {
+      "label": "offline (no Gazebo, no ROS2) -- autotune_lqr.simulate_closed_loop, actual cached K + current plant_params.yaml",
+      "deterministic": true,
+      "settling_time_q1_s": 3.25,
+      "settling_time_q2_s": 0.3800000000000001,
+      "overshoot_q1_deg": 8.192949959074529,
+      "final_q1_deg": -0.5144988947893765,
+      "passed": false
+    },
+    "closed_loop_physics_only": {
+      "label": "Gazebo physics engine, exact fixed 10ms control, no ROS2/DDS (gz-transport only)",
+      "deterministic": true,
+      "n_runs": 5,
+      "n_valid": 5,
+      "settling_time_q1_s_all": [
+        3.24,
+        3.24,
+        3.24,
+        3.24,
+        3.24
+      ],
+      "settling_time_q1_s_finite_only": [
+        3.24,
+        3.24,
+        3.24,
+        3.24,
+        3.24
+      ],
+      "n_never_settled_within_window": 0,
+      "overshoot_q1_deg": 8.223384939764992,
+      "final_q1_deg": -0.5145064487984475
+    },
+    "ros2_e2e_real": {
+      "label": "real ROS2/DDS end-to-end (run_clean_experiment.sh / run_repeated_experiment.sh, unmodified)",
+      "deterministic": false,
+      "n_invalid_infra": 1,
+      "n_runs": 5,
+      "n_valid": 4,
+      "settling_time_q1_s_all": [
+        "inf",
+        "inf",
+        "inf",
+        "inf"
+      ],
+      "settling_time_q1_s_finite_only": [],
+      "n_never_settled_within_window": 4
+    }
+  },
+  "note": "Case 1/2/3 classification is NOT decided here -- see PLAN.md/result.json interpretation section."
+}

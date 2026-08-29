@@ -1,0 +1,62 @@
+{
+  "task_id": "PHYS-002",
+  "goal": "LQI_ROOT_CAUSE_PLAN.md Task B: closed-loop physics-only harness, compared against a fresh offline prediction and a fresh ROS2 e2e baseline, to separate model/controller cause (Case 1) from ROS2/DDS cause (Case 2) for LQI's slow settling.",
+  "timestamp": "2026-08-29T09:35:00Z",
+  "blockers_found_and_fixed": [
+    {
+      "id": "no-pure-joint-torque-actuation-without-ros2",
+      "description": "ApplyLinkWrench (the only existing gz-transport-reachable actuation) applies an external wrench to a single link with no reaction pair on the parent link -- physically wrong for joint2. Added gz-sim-apply-joint-force-system plugin (true joint-DOF torque, correct reaction pairs) to double_pendulum.urdf.xacro for joint1/joint2.",
+      "user_approved": true,
+      "verified_fix": "spawned a temp modified URDF, confirmed /model/double_pendulum/joint/joint{1,2}/cmd_force topics exist and accept gz.msgs.Double"
+    },
+    {
+      "id": "applyjointforce-silently-overwritten-by-gz-ros2-control",
+      "description": "gz-sim's per-tick JointForceCmd write is last-writer-wins; ApplyJointForce declared before gz_ros2_control's <gazebo> block had its torque silently overwritten every tick by gz_ros2_control's own (zero, no ROS controller running) commanded effort. 20 N*m for 0.5s produced exactly 0.0000 deg motion before the fix.",
+      "user_approved": false,
+      "note": "same-category fix as the already-approved plugin addition, not a new scope question -- moved the two existing blocks to after gz_ros2_control's block",
+      "verified_fix": "30 N*m on joint1 for 6 ticks (60ms) produced q2_deg=-56.65 (correct coupled dynamics)"
+    },
+    {
+      "id": "gz-transport-python-subscribe-never-delivers-in-this-wsl2-env",
+      "description": "gz.transport13.Node.subscribe() registers successfully (discovery, topic_info all show it) but the callback never fires, confirmed on /clock and pose/info both, with a permissive callback and with GZ_IP=127.0.0.1 forced. request() and advertise()/publish() confirmed working. Used CLI subprocess (gz topic -e -n 1, same as PHYS-001) for pose reads only; Python bindings for step+torque publish.",
+      "user_approved": false,
+      "note": "environment limitation, not a design choice requiring sign-off -- did not block the task, just shaped the implementation",
+      "verified_fix": "hybrid approach measured ~149ms/tick vs ~2.2s/tick for all-CLI-subprocess -- both produce identical control logic, only wall-clock cost differs"
+    }
+  ],
+  "method": {
+    "gain_used": {"q_diag": [50.0, 50.0, 5.0, 5.0, 10.0, 10.0], "r_diag": [0.05, 0.05], "note": "lqr_node.py's actual ROS-parameter defaults, matching what run_clean_experiment.sh lqr nominal_balance runs with no extra args"},
+    "arms": [
+      {"name": "offline_prediction", "script": "offline_prediction.py", "reused": "autotune_lqr.simulate_closed_loop (verbatim)", "n_runs": 1, "deterministic": true},
+      {"name": "closed_loop_physics_only", "script": "closed_loop_physics_only_runner.py via run_phys002.sh", "n_runs": 5, "deterministic": true, "gazebo_relaunched_between_runs": true},
+      {"name": "ros2_e2e_real", "script": "run_repeated_experiment.sh (unmodified)", "n_runs": 5, "deterministic": false}
+    ]
+  },
+  "results": {
+    "offline_prediction": {"settling_time_q1_s": 3.25, "settling_time_q2_s": 0.38, "overshoot_q1_deg": 8.19, "final_q1_deg": -0.51, "passed": false},
+    "closed_loop_physics_only": {"settling_time_q1_s_all_runs": [3.24, 3.24, 3.24, 3.24, 3.24], "overshoot_q1_deg": 8.22, "final_q1_deg": -0.51, "n_valid": 5, "n_never_settled": 0},
+    "ros2_e2e_real": {"settling_time_q1_s_all_valid_runs": ["inf", "inf", "inf", "inf"], "n_runs": 5, "n_valid": 4, "n_invalid_infra": 1, "n_never_settled_within_window": 4}
+  },
+  "interpretation": {
+    "stale_baseline_found": "private/roadmap.md's existing '0.63s offline PASS' narrative does not reproduce against the currently-deployed cached gain + plant_params.yaml -- recomputed directly here (not re-cited) as 3.25s FAIL. The original '0.63s vs 3.3s' framing that motivated this whole investigation was based on a stale number.",
+    "offline_vs_physics_only": "agree almost exactly (3.25s vs 3.24s, within RK4-vs-DART discretization noise) -- classic Case 1 evidence: the LQI gain marginally fails the 3.0s spec even with ROS2/DDS entirely removed and control timing exact.",
+    "physics_only_vs_ros2_e2e": "physics-only settles cleanly and repeatably at 3.24s every run; real ROS2 e2e never settles within the 6s window in 4/4 valid runs. This gap is NOT explained by the model/controller (physics-only already accounts for that) -- it is Case 2 behavior (a real ROS2/DDS-layer degradation) stacked on top of the Case-1 baseline.",
+    "case_classification": "does not cleanly match a single one of the plan's three suggested cases -- both a model/tuning issue (Case 1: marginal 3.0s-spec failure, present even offline) AND a ROS2/DDS-layer issue (Case 2: the further degradation from 'marginally slow' to 'never settles') are real and independently demonstrated. Reported as such rather than forced into one case.",
+    "not_yet_isolated": "which specific ROS2-layer factor (timing jitter per DIAG-001, sensor/actuator path differences, or something else) causes the physics-only-to-real-e2e gap -- this task demonstrates the gap exists and is not explained by the controller/model, but does not pin down its exact mechanism."
+  },
+  "acceptance_checks": {
+    "n5_physics_only_runs_gazebo_relaunched": true,
+    "offline_prediction_via_actual_cached_gain": true,
+    "n5_fresh_ros2_e2e_runs_unmodified_script": true,
+    "all_three_arms_in_comparison_json_no_verdict_in_code": true,
+    "case_classification_reported_honestly_including_non_clean_fit": true
+  },
+  "regression_checks": {
+    "urdf_xacro_change_additive_only": true,
+    "existing_plugins_joints_links_ros2_control_block_untouched": true,
+    "lqr_e2e_n5_runs_ran_successfully_against_modified_xacro": "yes, though all FAIL_CONTROL/1 INVALID_INFRA on their own control merits, not on infra/regression grounds -- no crash, no new infra failure mode introduced by the xacro change",
+    "pd_controller_not_independently_retested": "xacro change is topic-based and inert unless published to; not independently re-verified with a fresh PD clean run in this task"
+  },
+  "passed": true,
+  "next_step": "update private/roadmap.md's dangling '0.63s' note; consider a DIAG-001-jitter-vs-real-e2e-trajectory correlation follow-up; LQI Q/R re-tune (autotune_lqr.py) is a separate, decoupled next step for the Case-1 portion"
+}

@@ -1,0 +1,17 @@
+{
+  "batch_id": "lqr_nominal_balance_20260829T092904Z_5135",
+  "controller": "lqr",
+  "scenario": "nominal_balance",
+  "n_runs": 5,
+  "n_pass_control": 0,
+  "n_fail_control": 4,
+  "n_invalid_infra": 1,
+  "n_fail_harness": 0,
+  "n_control_runs": 4,
+  "pass_rate": 0.0,
+  "infra_failure_rate": 0.2,
+  "harness_failure_rate": 0.0,
+  "threshold": 0.6,
+  "verdict": "FAIL",
+  "runs": [{"run": 1, "verdict": "FAIL_CONTROL", "exit_code": 1, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_lqr_nominal_balance_20260829T092904Z_5135/run1/result.json"},{"run": 2, "verdict": "FAIL_CONTROL", "exit_code": 1, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_lqr_nominal_balance_20260829T092904Z_5135/run2/result.json"},{"run": 3, "verdict": "INVALID_INFRA", "exit_code": 4, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_lqr_nominal_balance_20260829T092904Z_5135/run3/result.json"},{"run": 4, "verdict": "FAIL_CONTROL", "exit_code": 1, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_lqr_nominal_balance_20260829T092904Z_5135/run4/result.json"},{"run": 5, "verdict": "FAIL_CONTROL", "exit_code": 1, "result_file": "/home/minayu/agentic_double_pendulum/results/raw/repeated_lqr_nominal_balance_20260829T092904Z_5135/run5/result.json"}]
+}

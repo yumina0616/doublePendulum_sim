@@ -161,4 +161,26 @@
     </plugin>
   </gazebo>
 
+  <!-- PHYS-002: lets the closed-loop physics-only harness
+       (tasks/PHYS-002-closed-loop-physics-only/) inject pure joint torque
+       directly via gz-transport, with correct actuator reaction pairs,
+       unlike ApplyLinkWrench (used only for the external disturbance
+       pulse) which applies an external wrench with no reaction on the
+       parent link. This goes through the joint's actuation DOF instead,
+       so joint2's reaction is correctly felt by link1. Publishes to
+       /model/double_pendulum/joint/joint{1,2}/cmd_force (gz.msgs.Double).
+       Idle (zero net effect) unless something publishes to those topics,
+       so normal ROS2 e2e runs (PD/LQR via /effort_controller/commands)
+       are unaffected. -->
+  <gazebo>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint1</joint_name>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint2</joint_name>
+    </plugin>
+  </gazebo>
+
 </robot>

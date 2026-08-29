@@ -1,0 +1,89 @@
+task_id: PHYS-002
+goal: >
+  private/LQI_ROOT_CAUSE_PLAN.md Task B: build a closed-loop
+  physics-only harness (LQI controller driven directly against
+  Gazebo's physics engine via gz-transport, no ROS2/DDS anywhere in
+  the actuation/sensing path) reusing the exact cached LQI gain/logic,
+  and compare its settling behavior against (a) a freshly-computed
+  offline nonlinear-model prediction using that same gain, and (b) a
+  fresh real ROS2 end-to-end LQR/nominal_balance baseline -- to answer
+  whether LQI's slow real-Gazebo settling is caused by ROS2 timing
+  jitter (DIAG-001's subject) or by the model/controller itself.
+
+allowed_changes:
+  - tasks/PHYS-002-closed-loop-physics-only/scripts/closed_loop_physics_only_runner.py
+    (new -- single-run closed-loop harness; imports lqr_node.load_cached_gains
+    and lqr_controller.lqr_torque directly, no reimplementation of the
+    control law; actuates via gz-transport ApplyJointForce, senses via
+    gz-transport pose read, steps physics via gz-transport WorldControl)
+  - tasks/PHYS-002-closed-loop-physics-only/scripts/run_phys002.sh (new
+    -- N-repeat wrapper, full Gazebo relaunch per run, same isolation
+    convention as PHYS-001/DIAG-001)
+  - tasks/PHYS-002-closed-loop-physics-only/scripts/offline_prediction.py
+    (new -- reuses autotune_lqr.simulate_closed_loop verbatim with the
+    actual cached K and current plant_params.yaml, no new simulation
+    logic)
+  - tasks/PHYS-002-closed-loop-physics-only/scripts/compare_results.py
+    (new -- aggregates the three arms' raw numbers side by side; does
+    not compute or embed a Case 1/2/3 verdict, per the plan's explicit
+    instruction that interpretation stays out of code)
+  - double_pendulum_description/urdf/double_pendulum.urdf.xacro
+    (unplanned, user-approved -- the only existing actuation mechanism
+    reachable via gz-transport without ROS2 was ApplyLinkWrench, which
+    applies an external wrench to a single link with no reaction pair
+    on the parent -- physically wrong for joint2's actuation, which
+    would silently bias this experiment's dynamics away from the real
+    actuator's behavior. Added two gz-sim-apply-joint-force-system
+    plugin blocks (joint1, joint2), which apply true joint-actuation
+    torque with correct reaction pairs via
+    /model/double_pendulum/joint/joint{1,2}/cmd_force. Confirmed inert
+    for every other existing experiment (PD/LQR ROS2 e2e via
+    /effort_controller/commands) since nothing publishes to those
+    topics outside this task. MUST be declared AFTER the
+    gz_ros2_control <gazebo> block in the xacro -- gz-sim's per-tick
+    JointForceCmd write is last-writer-wins, and gz_ros2_control's
+    hardware interface writes its own (zero, absent a ROS controller)
+    commanded effort every step; declared before it, this plugin's
+    torque was confirmed (by direct testing -- 20 N*m applied for 0.5s
+    Gazebo time producing exactly 0.0000 deg motion) to be silently
+    overwritten every tick.)
+
+forbidden_changes:
+  - this specification.yaml
+  - double_pendulum_control/lqr_node.py, lqr_controller.py,
+    plant_params.py, controllers.yaml, linear_model.py,
+    design_lqr_gains.py, autotune_lqr.py (read-only for this task --
+    PHYS-002 only measures existing behavior with the existing cached
+    gain, does not change the control law or redesign the gain)
+  - double_pendulum_eval/scripts/run_clean_experiment.sh,
+    run_repeated_experiment.sh, run_experiment.py, metrics.py (reused
+    unmodified for the ROS2 e2e comparison arm)
+  - double_pendulum.urdf.xacro's existing plugins/joints/links/ros2_control
+    block (only the two new ApplyJointForce <gazebo> blocks were added,
+    appended after the existing gz_ros2_control block; nothing existing
+    was edited or reordered)
+  - any scenario's acceptance criteria
+
+acceptance:
+  - N=5 closed-loop physics-only runs (Gazebo fully relaunched between
+    each), each producing settling_time_q1_s/q2_s, overshoot, final
+    error, via metrics.compute_metrics (the same function
+    run_experiment.py itself uses)
+  - one deterministic offline-prediction run via the actual cached K
+  - N=5 fresh real ROS2 e2e LQR/nominal_balance runs via the existing,
+    unmodified run_repeated_experiment.sh
+  - all three arms' numbers laid out side by side in
+    evidence/comparison.json, with no Case 1/2/3 verdict embedded in
+    code -- that judgment is made in PLAN.md/result.json by reading the
+    numbers, and reported honestly even if it does not cleanly match
+    any single one of the plan's three suggested cases
+
+regression:
+  - double_pendulum.urdf.xacro's change is additive-only (two new
+    plugin blocks, nothing removed or reordered among existing
+    elements) and inert unless something publishes to the two new
+    cmd_force topics -- no existing PD/LQR ROS2 e2e scenario touches
+    them, so no regression expected; not independently re-verified
+    with a fresh PD/LQR clean run in this task (the N=5 LQR e2e runs
+    collected for the comparison arm above serve as that check for the
+    LQR path)
