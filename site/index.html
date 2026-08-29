@@ -294,7 +294,7 @@
     <p class="intro">
       Every phase below is backed by a <code>tasks/&lt;ID&gt;/</code> directory (spec, plan,
       result, evidence) in the repo &mdash; not a status claim without a paper trail.
-      <span class="mono">17</span> tasks completed to date.
+      <span class="mono">22</span> tasks completed to date.
     </p>
     <div class="timeline">
       <div class="phase-row">
@@ -346,8 +346,9 @@
     <h2>03 &middot; Key Results</h2>
     <h3 class="title">The most important thing this project has proven</h3>
     <p class="intro">
-      Run-to-run variance was this project's longest-standing open question. It's now resolved
-      into two separate, honestly-labeled findings &mdash; not by assumption, by measurement.
+      Run-to-run variance, and separately, why LQI's settling time doesn't match its own offline
+      prediction, were this project's longest-standing open questions. Both are now resolved into
+      honestly-labeled findings &mdash; not by assumption, by measurement.
     </p>
     <div class="result-grid">
 
@@ -373,6 +374,29 @@
           <div class="bar-row"><span class="bar-label">ROS end-to-end</span><div class="bar-track"><div class="bar-fill orange" style="width:35%"></div></div><span class="bar-val">4.45° spread</span></div>
         </div>
         <div class="card-note">Bit-for-bit identical trajectories across 3 independent Gazebo relaunches under physics-only mode &mdash; even with genuinely chaotic, uncontrolled dynamics. The physics solver is deterministic; every variance this project has observed traces to the ROS2/DDS/controller layer.</div>
+      </div>
+
+      <div class="result-card">
+        <div class="task-id">PHYS-002</div>
+        <h5>LQI settling: two real causes, not one</h5>
+        <p class="desc">Same cached LQI gain, three ways: offline model, closed-loop physics-only (gz-transport, no ROS2/DDS, exact 10ms), and real ROS2 end-to-end (N=5).</p>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Offline model</span><div class="bar-track"><div class="bar-fill orange" style="width:54%"></div></div><span class="bar-val">3.25s</span></div>
+          <div class="bar-row"><span class="bar-label">Physics-only</span><div class="bar-track"><div class="bar-fill orange" style="width:54%"></div></div><span class="bar-val">3.24s</span></div>
+          <div class="bar-row"><span class="bar-label">Real ROS2 e2e</span><div class="bar-track"><div class="bar-fill red" style="width:100%"></div></div><span class="bar-val">never settles</span></div>
+        </div>
+        <div class="card-note">Offline and physics-only agree almost exactly &mdash; this gain is marginally too slow even under ideal, jitter-free conditions (a model/tuning issue). But real ROS2 e2e never settles within the 6s window at all, in 4/4 valid runs &mdash; a further, independent ROS2/DDS-layer degradation stacked on top.</div>
+      </div>
+
+      <div class="result-card">
+        <div class="task-id">CTRL-006 &rarr; DIAG-002</div>
+        <h5>Retuning alone makes it worse, and here's when it breaks</h5>
+        <p class="desc">Re-searched the gain: offline settling improved 3.25s&rarr;0.87s. Deployed and verified with real Gazebo runs anyway &mdash; reverted after the numbers came back.</p>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Old gain q2 OS</span><div class="bar-track"><div class="bar-fill orange" style="width:36%"></div></div><span class="bar-val">2.2&ndash;7.1&deg;</span></div>
+          <div class="bar-row"><span class="bar-label">New gain q2 OS</span><div class="bar-track"><div class="bar-fill red" style="width:70%"></div></div><span class="bar-val">7.1&ndash;14.0&deg;</span></div>
+        </div>
+        <div class="card-note">A more aggressive offline-optimal gain performed worse for real, not better &mdash; consistent with less delay/jitter margin. <code>DIAG-002</code> then traced exactly when: divergence from the ideal trajectory clusters right after physics-only's own settling moment (+0.08&ndash;0.71s), not near any single jitter spike (which lands at wildly different, unrelated times per run).</div>
       </div>
 
       <div class="result-card">
@@ -515,31 +539,36 @@
     <div class="problem">
       <div class="marker">01</div>
       <div>
-        <h5>PD/LQR gain tuning gap</h5>
-        <p>Even after CTRL-005 made measurement fully reproducible, settling time consistently
+        <h5>PD gain tuning gap</h5>
+        <p>Even after CTRL-005 made measurement fully reproducible, PD settling time consistently
         lands at <span class="stat">3.3&ndash;3.4s</span> against <code>nominal_balance</code>'s
         <span class="stat">3.0s</span> max &mdash; an ordinary, ~10&ndash;15% gain-tuning gap, not a
-        mystery. Not yet retuned.</p>
+        mystery. Not yet retuned (LQI's own version of this was fully root-caused &mdash;
+        see <code>PHYS-002</code>/<code>CTRL-006</code>/<code>DIAG-002</code> in Key Results above).</p>
       </div>
     </div>
     <div class="problem">
       <div class="marker">02</div>
       <div>
-        <h5>ROS2/DDS layer's residual variance is not sub-divided</h5>
-        <p><code>PHYS-001</code> proved the ~<span class="stat">4.45°</span> spread lives in the
-        ROS2/DDS/controller layer, not the physics solver &mdash; but not which specific sub-layer
-        (discovery timing? QoS settings? broadcaster publish jitter?). A well-scoped follow-up,
-        not started.</p>
+        <h5>Jitter-to-divergence mechanism is a hypothesis, not yet proven</h5>
+        <p><code>DIAG-002</code> narrowed the ROS2/DDS-layer residual variance from &ldquo;exists,
+        sub-layer unknown&rdquo; to a specific, falsifiable claim: divergence from the ideal
+        trajectory tracks physics-only's own settling moment, not any single large jitter event.
+        The direct proof &mdash; injecting synthetic jitter into the physics-only harness and
+        checking whether the same settle-then-diverge pattern reproduces &mdash; is not yet
+        done.</p>
       </div>
     </div>
     <div class="problem">
       <div class="marker">03</div>
       <div>
-        <h5>Distro/Gazebo combination is unofficial</h5>
-        <p>Ubuntu 22.04 + ROS2 Humble + Gazebo Sim 8.14 &ldquo;Harmonic&rdquo; is not an official
-        pairing (Humble's official partner is Fortress) &mdash; a Jazzy+Harmonic comparison
-        (<code>ENV-001</code>) to test whether this contributes to the residual variance above is
-        planned, not started.</p>
+        <h5>Distro/Gazebo pairing: tested, surprising result, confound unresolved</h5>
+        <p><code>ENV-001</code> ran the officially-paired Jazzy+Harmonic combination and found
+        <span class="stat">~6x more</span> ROS2/DDS-layer variance, not less &mdash; the opposite
+        of the hypothesized direction. Reported honestly alongside its real confound: that
+        environment was tested inside Docker, an extra virtualization layer the primary
+        Humble+Harmonic setup doesn't have, so &ldquo;official pairing&rdquo; and
+        &ldquo;containerization overhead&rdquo; aren't yet disentangled.</p>
       </div>
     </div>
     <div class="problem">

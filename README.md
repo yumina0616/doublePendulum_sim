@@ -111,10 +111,23 @@ variance actually lives:
   every instance of run-to-run variance this project has observed traces to
   the ROS2/DDS/controller layer, not physics**, confirmed by direct
   measurement rather than inferred from fixing symptoms one at a time.
+- **`ENV-001`** — tested whether that ROS2/DDS-layer variance was specific
+  to this project's unofficial Humble+Harmonic pairing, by repeating
+  `PHYS-001`'s exact methodology inside a Jazzy+Harmonic container (the
+  *officially* paired distro/Gazebo combination). Result, the opposite of
+  the hypothesized direction: **~6x *more* variance** in the officially
+  paired environment (27.09° overshoot range vs. 4.45°, N=3 each) — an
+  honest negative result, reported with its real confound stated plainly
+  (Jazzy+Harmonic was tested inside Docker, an extra virtualization layer
+  Humble+Harmonic wasn't, so "official pairing" and "containerization
+  overhead" aren't yet disentangled). What *did* hold identically across
+  both: physics-solver determinism (0.0 rad diff, N=3) — not
+  environment-specific.
 
 See `tasks/INFRA-001-verdict-taxonomy/`, `tasks/INFRA-002-readiness-gate/`,
-`tasks/INFRA-003-run-isolation/`, and `tasks/PHYS-001-physics-only-harness/`
-for the full investigation trail and evidence.
+`tasks/INFRA-003-run-isolation/`, `tasks/PHYS-001-physics-only-harness/`,
+and `tasks/ENV-001-distro-comparison/` for the full investigation trail and
+evidence.
 
 ## Known limitation: PD gain tuning
 
@@ -155,10 +168,10 @@ during Phase 2 — the open item is clearing the *automated, quantitative*
 acceptance threshold consistently, not "does it balance at all." `PHYS-001`
 (see [Experiment validity layer](#experiment-validity-layer) above) later
 confirmed there's also a separate, small (~4.45°), genuinely real spread
-that lives specifically in the ROS2/DDS/controller layer — not further
-sub-divided yet (which exact sub-layer contributes it is an open,
-well-scoped follow-up), and not the same thing as the gain-tuning gap
-above.
+that lives specifically in the ROS2/DDS/controller layer. For LQI (the
+integral-augmented LQR variant actually deployed, `lqr_node.py`), this
+gain-tuning-vs-ROS2-layer question was fully root-caused, not left as a
+sub-divide-later item — see the next section.
 
 `REFACTOR-001` closed a related but distinct risk: the plant's physical
 parameters (mass, length, damping, torque limits) and the LQR gain design
@@ -175,6 +188,57 @@ the rule is structurally unnecessary.
 See `tasks/CTRL-003-pd-reproducibility/`, `tasks/CTRL-004-statistical-acceptance/`,
 `tasks/CTRL-005-run-reproducibility/`, `tasks/PHYS-001-physics-only-harness/`,
 and `tasks/REFACTOR-001-plant-single-source/` for the full investigation trail.
+
+## Known limitation: LQI settling — root-caused into two stacked, independent causes
+
+`nominal_balance`'s real-Gazebo settling for LQI had stalled at 3.3–3.4s
+against a 3.0s max, alongside an unexplained gap against this same
+controller's own offline model prediction. Three follow-on tasks
+(`PHYS-002`, `CTRL-006`, `DIAG-002`) root-caused it — not into one clean
+story, but into two independently real, stacked causes, reported exactly
+as found rather than forced into whichever one made a tidier narrative.
+
+- **`PHYS-002`** built a second physics-only harness — this one
+  *closed-loop*: the exact cached LQI gain and control law, driven
+  directly via gz-transport (no ROS2/DDS anywhere in the loop) at an
+  exact, jitter-free 10ms control period. Result: **the offline model and
+  the physics-only harness agree almost exactly** (3.25s vs. 3.24s
+  settling, both failing the 3.0s spec) — this gain is marginally too
+  slow even under ideal conditions, a model/tuning issue independent of
+  ROS2. But **real ROS2 end-to-end is qualitatively worse than either**:
+  it never settles within the 6s scenario window at all (N=5, 4 valid
+  runs). Two real causes, not one, and not additive in the way that
+  sounds — see the next finding.
+- **`CTRL-006`** re-searched the LQI gain (`autotune_lqr.py`,
+  `differential_evolution`) to fix the model/tuning side. It worked
+  spectacularly offline — 0.87s settling, down from 3.25s. Deployed and
+  verified with real Gazebo runs anyway, not just trusted offline:
+  **0/5 real runs passed, and by several measures (elbow-joint settling,
+  elbow overshoot) the new gain was *worse* than the old one** —
+  consistent with a more aggressive gain having less delay/jitter margin
+  against the real system. Reverted to the original gain; the new gain's
+  full numbers are kept as a documented negative result, not discarded.
+- **`DIAG-002`** pinned down *when* the real trajectory actually departs
+  from the physics-only one. Not near any single large jitter event
+  (`DIAG-001` measured jitter up to 6.8–9.5ms against a 5–10ms nominal
+  period, but the timing of each run's own worst jitter spike doesn't
+  predict its divergence point — a real null result, reported as such).
+  Instead, divergence onset clusters tightly (+0.08–0.71s, mean +0.52s)
+  right after the physics-only trajectory's *own* settling moment — a
+  much tighter pattern than the jitter-event timing, which spans a
+  2.8–6.5s range with no shared value across runs. A plausible mechanism,
+  not yet proven: this gain is most fragile exactly at the moment it
+  would otherwise cross into the settle band, and cumulative small
+  jitter — not one dramatic delay — is enough to make it miss that
+  window.
+
+Net effect: the settling-time gap has two independently confirmed
+causes (a marginal gain, and a genuine ROS2/DDS-layer degradation on top
+of it that gain-tuning alone cannot fix and can worsen), and the
+mechanism connecting jitter to that degradation is now a specific,
+falsifiable hypothesis instead of an open question. See
+`tasks/PHYS-002-closed-loop-physics-only/`, `tasks/CTRL-006-lqi-gain-retune/`,
+and `tasks/DIAG-002-jitter-trajectory-correlation/` for the full trail.
 
 ## Repo layout: where the actual code lives
 
@@ -223,9 +287,9 @@ rejected or qualified rather than reported as clean wins.
 - `tasks/<ID>-.../` — one directory per completed agentic task:
   `specification.yaml` (goal, allowed/forbidden changes, acceptance
   criteria), `PLAN.md`, `result.json`, `trajectory.jsonl`, `evidence/`.
-  17 tasks completed to date (`CTRL-001`–`005`, `TOOL-001`,
+  22 tasks completed to date (`CTRL-001`–`006`, `TOOL-001`,
   `BENCH-001`–`003`, `HARNESS-001`, `SEC-001`–`002`, `INFRA-001`–`003`,
-  `PHYS-001`, `REFACTOR-001`).
+  `PHYS-001`–`002`, `REFACTOR-001`, `ENV-001`, `DIAG-001`–`002`).
 - `harness/failure_store.py` / `categorize_failures.py` / `propose_skill.py`
   — turns failed tasks into a categorized failure store and, once a category
   has enough evidence, a candidate skill YAML (never auto-activated).
