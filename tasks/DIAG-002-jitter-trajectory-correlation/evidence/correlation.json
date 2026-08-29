@@ -1,0 +1,104 @@
+{
+  "n_runs": 4,
+  "n_runs_with_divergence_onset_detected": 4,
+  "n_runs_where_onset_near_largest_jitter_event": 0,
+  "physics_only_settling_time_q1_s_reference": 3.24,
+  "onset_minus_physics_only_settling_s_per_run": [
+    0.6408709349999997,
+    0.07489354399999959,
+    0.636968789,
+    0.7125851289999998
+  ],
+  "onset_minus_physics_only_settling_s_mean": 0.5163295992499998,
+  "onset_minus_physics_only_settling_s_range": [
+    0.07489354399999959,
+    0.7125851289999998
+  ],
+  "per_run": {
+    "run_2_raw_trajectory.json": {
+      "onset_t": 3.880870935,
+      "max_div_q1_deg": 17.861683365818898,
+      "max_div_q2_deg": 4.2629734387252745,
+      "top_3_jitter_events_t_and_ms": [
+        [
+          4.454885002,
+          4.130394000010256
+        ],
+        [
+          5.238515022,
+          2.8228889999820694
+        ],
+        [
+          4.205333388,
+          2.701553000003969
+        ]
+      ],
+      "onset_within_0.2s_of_largest_jitter_event": false,
+      "delta_from_physics_only_settling_s": 0.6408709349999997
+    },
+    "run_3_raw_trajectory.json": {
+      "onset_t": 3.314893544,
+      "max_div_q1_deg": 17.300508236356645,
+      "max_div_q2_deg": 8.479902857325687,
+      "top_3_jitter_events_t_and_ms": [
+        [
+          6.518134578,
+          6.8874210000115
+        ],
+        [
+          5.438990098,
+          3.0455310000218105
+        ],
+        [
+          4.489250029,
+          2.720107000011467
+        ]
+      ],
+      "onset_within_0.2s_of_largest_jitter_event": false,
+      "delta_from_physics_only_settling_s": 0.07489354399999959
+    },
+    "run_4_raw_trajectory.json": {
+      "onset_t": 3.876968789,
+      "max_div_q1_deg": 17.803849257294015,
+      "max_div_q2_deg": 5.404930585273561,
+      "top_3_jitter_events_t_and_ms": [
+        [
+          2.756837227,
+          11.088679000006321
+        ],
+        [
+          2.770233404,
+          8.315005999999128
+        ],
+        [
+          6.566565967,
+          7.1171640000170555
+        ]
+      ],
+      "onset_within_0.2s_of_largest_jitter_event": false,
+      "delta_from_physics_only_settling_s": 0.636968789
+    },
+    "run_5_raw_trajectory.json": {
+      "onset_t": 3.952585129,
+      "max_div_q1_deg": 17.805203115270128,
+      "max_div_q2_deg": 5.160271604270749,
+      "top_3_jitter_events_t_and_ms": [
+        [
+          6.09138965,
+          3.3445069999470434
+        ],
+        [
+          2.116685309,
+          2.744158999969386
+        ],
+        [
+          4.243445745,
+          2.614759999976286
+        ]
+      ],
+      "onset_within_0.2s_of_largest_jitter_event": false,
+      "delta_from_physics_only_settling_s": 0.7125851289999998
+    }
+  },
+  "note": "onset = first t (>= settle_before_s) after which divergence from the physics-only trajectory stays above 1.0deg for the rest of the recording. 'near' = within 0.2s of that same run's single largest joint_states arrival-jitter event. Does NOT conclude correlation exists or not -- see PLAN.md for the interpretation."
+}

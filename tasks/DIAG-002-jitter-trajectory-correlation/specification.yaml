@@ -1,0 +1,63 @@
+task_id: DIAG-002
+goal: >
+  PHYS-002/CTRL-006 Case 2 follow-up: pin down WHEN and HOW the real
+  ROS2/DDS trajectory actually diverges from PHYS-002's known,
+  jitter-free physics-only trajectory, and whether that divergence
+  correlates with individual large jitter events (DIAG-001's finding) or
+  with something else -- rather than re-litigating whether jitter
+  exists at all (already answered by DIAG-001).
+
+allowed_changes:
+  - tasks/DIAG-002-jitter-trajectory-correlation/scripts/record_trajectory.py
+    (new -- extends DIAG-001's measure_jitter.py to also record actual
+    joint positions/commanded torques, using run_experiment.py's exact
+    _now_s()/t0 convention for the time axis, so this recording's "t" is
+    directly comparable to every other result.json's settling-time
+    calculations and to PHYS-002's physics-only "t")
+  - tasks/DIAG-002-jitter-trajectory-correlation/scripts/run_diag002.sh
+    (new -- DIAG-001's run_diag001.sh orchestration pattern, reused
+    verbatim, pointed at record_trajectory.py instead of measure_jitter.py)
+  - tasks/DIAG-002-jitter-trajectory-correlation/scripts/correlate_trajectory_jitter.py
+    (new -- interpolates PHYS-002's physics-only reference trajectory
+    onto each real run's actual sample times, computes divergence in
+    degrees over time, finds the divergence-onset time, and compares it
+    against both that run's own largest jitter events AND physics-only's
+    own settling time -- reports whichever pattern actually holds, does
+    not assume either in advance)
+
+forbidden_changes:
+  - this specification.yaml
+  - double_pendulum_control/lqr_node.py, lqr_controller.py,
+    plant_params.py, controllers.yaml, design_lqr_gains.py (read-only --
+    this task only observes existing behavior with the current deployed
+    gain, which is the original pre-CTRL-006 gain)
+  - double_pendulum_eval/scripts/run_clean_experiment.sh,
+    run_experiment.py, metrics.py (reused unmodified to generate the
+    real ROS2 e2e runs being recorded)
+  - tasks/PHYS-002-closed-loop-physics-only/ (its evidence is read as a
+    reference trajectory, not modified)
+  - tasks/DIAG-001-timing-jitter/ (historical record, not modified --
+    this task's recorder is a superset written fresh rather than
+    editing DIAG-001's own script, to keep that task's artifact exactly
+    as it was when completed)
+  - any scenario's acceptance criteria
+
+acceptance:
+  - N=5 attempted real LQR/nominal_balance runs (Gazebo fully relaunched
+    each time via the unmodified run_clean_experiment.sh), each with a
+    concurrently recorded raw trajectory (actual q1/q2/tau1/tau2 plus
+    arrival timestamps for jitter) -- infra hiccups excluded honestly,
+    not silently dropped
+  - for each valid run -- a computed divergence-onset time (first t after
+    which the real trajectory stays >1deg away from the physics-only
+    reference for the rest of the recording), and a check of whether
+    that onset time falls near that run's own largest arrival-jitter
+    event
+  - a plain, non-prejudged report of whatever pattern the numbers
+    actually show -- including reporting a null result (no correlation
+    to individual jitter events) as a real, useful finding rather than
+    searching for a way to force one
+
+regression:
+  - none (net-new, read-only diagnostic scripts; does not touch any
+    existing controller/eval source file)

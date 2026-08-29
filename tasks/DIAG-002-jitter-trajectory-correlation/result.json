@@ -1,0 +1,43 @@
+{
+  "task_id": "DIAG-002",
+  "goal": "Pin down when/how the real ROS2 e2e trajectory diverges from PHYS-002's known physics-only trajectory, and whether that correlates with individual large jitter events (DIAG-001) or something else.",
+  "timestamp": "2026-08-29T12:05:00Z",
+  "method": {
+    "recorder": "record_trajectory.py (extends DIAG-001's measure_jitter.py to also record actual q1/q2/tau1/tau2, using run_experiment.py's exact t0/_now_s() time-axis convention)",
+    "orchestration": "run_diag002.sh (DIAG-001's run_diag001.sh pattern, reused verbatim)",
+    "n_attempted": 5,
+    "n_valid": 4,
+    "n_excluded_infra": 1,
+    "gain_used": "original (pre-CTRL-006, currently deployed) -- same as PHYS-002's physics-only reference",
+    "physics_only_reference": "tasks/PHYS-002-closed-loop-physics-only/evidence/physics_only_run_1.json (all 5 of that task's runs were bit-identical)"
+  },
+  "results": {
+    "physics_only_settling_time_q1_s_reference": 3.24,
+    "per_run": [
+      {"run": 2, "onset_t": 3.881, "max_div_q1_deg": 17.86, "max_div_q2_deg": 4.26, "largest_jitter_event": {"t": 4.455, "deviation_ms": 4.13}, "onset_minus_physics_only_settling_s": 0.641},
+      {"run": 3, "onset_t": 3.315, "max_div_q1_deg": 17.30, "max_div_q2_deg": 8.48, "largest_jitter_event": {"t": 6.518, "deviation_ms": 6.89}, "onset_minus_physics_only_settling_s": 0.075},
+      {"run": 4, "onset_t": 3.877, "max_div_q1_deg": 17.80, "max_div_q2_deg": 5.40, "largest_jitter_event": {"t": 2.757, "deviation_ms": 11.09}, "onset_minus_physics_only_settling_s": 0.637},
+      {"run": 5, "onset_t": 3.953, "max_div_q1_deg": 17.81, "max_div_q2_deg": 5.16, "largest_jitter_event": {"t": 6.091, "deviation_ms": 3.34}, "onset_minus_physics_only_settling_s": 0.713}
+    ],
+    "onset_near_largest_jitter_event_count": 0,
+    "onset_minus_physics_only_settling_s_mean": 0.516,
+    "onset_minus_physics_only_settling_s_range": [0.075, 0.713],
+    "largest_jitter_event_t_range_across_runs": [2.757, 6.518]
+  },
+  "interpretation": {
+    "single_big_jitter_event_hypothesis": "NOT supported -- 0/4 runs show divergence onset near (within 0.2s of) that run's own single largest jitter event; some are over a second apart",
+    "physics_only_settling_time_hypothesis": "supported by clustering, not proven -- onset consistently lands 0.075-0.713s (mean 0.516s) after physics-only's own 3.24s settling moment, a much tighter and more consistent pattern than the largest-jitter-event timing (which spans 2.757-6.518s with no shared value across runs)",
+    "plausible_mechanism": "this gain is only marginally able to settle at all (PHYS-002/CTRL-006), and is likely most sensitive right around the moment it would otherwise cross into the settle band -- small, cumulative jitter (not one dramatic event) is enough to nudge it away from actually entering/staying in that band at that critical moment, and the marginal design doesn't recover once it misses",
+    "caveat": "plausible mechanism, not a proven one -- N=4 valid runs, one gain, one scenario",
+    "null_result_reported": "the lack of single-event correlation is reported as a real finding, not discarded or reframed to force a positive result"
+  },
+  "acceptance_checks": {
+    "n5_attempted_with_honest_infra_exclusion": true,
+    "divergence_onset_computed_per_valid_run": true,
+    "checked_against_largest_jitter_event": true,
+    "checked_against_physics_only_settling_time": "added beyond spec, because the numbers pointed there",
+    "null_result_reported_not_discarded": true
+  },
+  "passed": true,
+  "next_step": "Inject synthetic jitter (drawn from DIAG-001's measured distribution) into the physics-only harness's control period to test whether jitter alone (no other real-ROS2 confound) reproduces this same settle-then-diverge pattern -- would isolate jitter as sufficient. A gain search with an explicit delay/jitter-robustness objective (per CTRL-006) should specifically target robustness around the settling-boundary moment, per this task's finding."
+}
