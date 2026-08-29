@@ -1,0 +1,68 @@
+task_id: CTRL-006
+goal: >
+  PHYS-002 found the LQI gain marginally fails the 3.0s settling spec
+  even offline/physics-only (Case 1), independent of the further real
+  ROS2/DDS degradation (Case 2). This task addresses the Case 1 portion:
+  re-search Q/R weights via autotune_lqr.py's differential_evolution
+  search against the current plant_params.yaml, verify the new gain
+  offline + physics-only + real ROS2 e2e, and decide whether to deploy
+  it as the new default.
+
+allowed_changes:
+  - double_pendulum_eval/scripts/autotune_lqr.py (pre-existing bug fix,
+    unrelated to the gain search itself -- main()'s `DoublePendulum(PendulumParams())`
+    call is broken since REFACTOR-001 changed PendulumParams to require
+    explicit constructor args -- `PendulumParams()` with no args raises
+    TypeError. Fixed to `DoublePendulum()`, which internally calls
+    `PendulumParams.load()` -> current plant_params.yaml, matching every
+    other caller in the codebase. This bug meant autotune_lqr.py's search
+    could not have been run successfully since REFACTOR-001 landed --
+    kept regardless of which gain this task ultimately deploys.)
+  - double_pendulum_control/lqr_node.py, design_lqr_gains.py (parameter
+    defaults -- attempted new values from the search, then reverted back
+    to the original defaults after real ROS2 e2e verification showed no
+    net improvement; see result.json)
+  - tasks/CTRL-006-lqi-gain-retune/ (new -- this task's own scripts,
+    reusing PHYS-002's closed_loop_physics_only_runner.py/offline_prediction.py
+    verbatim with only Q_DIAG/R_DIAG constants updated to the searched
+    weights, plus a copy of PHYS-002's N-repeat wrapper renamed for this
+    task; PHYS-002's own copies are left untouched as a historical record)
+
+forbidden_changes:
+  - this specification.yaml
+  - double_pendulum_control/lqr_controller.py, plant_params.py,
+    linear_model.py, controllers.yaml (the control law and plant model
+    themselves are unchanged -- only the Q/R weights fed into the
+    existing design_lqr() function)
+  - double_pendulum_eval/scripts/run_clean_experiment.sh,
+    run_repeated_experiment.sh, run_experiment.py, metrics.py (reused
+    unmodified for the ROS2 e2e verification arm)
+  - double_pendulum_description/urdf/double_pendulum.urdf.xacro
+    (PHYS-002's ApplyJointForce plugin addition, reused as-is for this
+    task's physics-only verification arm)
+  - tasks/PHYS-002-closed-loop-physics-only/ (historical record of that
+    task's own actual run -- not touched even though this task copies
+    from it)
+  - any scenario's acceptance criteria
+
+acceptance:
+  - one differential_evolution search run against nominal_balance,
+    recorded weights and offline result
+  - offline verification (reused offline_prediction.py copy) matches the
+    search's own reported result
+  - N=3 closed-loop physics-only verification runs with the new gain
+  - N=5 real ROS2 e2e LQR/nominal_balance runs with the new gain
+    (existing, unmodified run_repeated_experiment.sh)
+  - an explicit keep-or-revert decision recorded with its rationale,
+    made by comparing real ROS2 e2e behavior before/after (not just the
+    offline/physics-only numbers), since real Gazebo e2e is this
+    project's actual acceptance criterion
+  - whichever gain is NOT deployed is still fully documented with its
+    real numbers -- this task does not hide a negative result
+
+regression:
+  - the deployed gain cache (install/double_pendulum_control/lib/double_pendulum_control/lqr_gain_cache.json,
+    gitignored, not committed either way) reflects whichever decision
+    was made; lqr_node.py/design_lqr_gains.py's committed defaults match
+    it exactly, so a fresh `ros2 run double_pendulum_control design_lqr_gains.py`
+    reproduces the same deployed cache from a clean checkout

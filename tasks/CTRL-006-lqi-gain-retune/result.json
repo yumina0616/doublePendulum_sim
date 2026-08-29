@@ -1,0 +1,56 @@
+{
+  "task_id": "CTRL-006",
+  "goal": "Re-search LQI Q/R weights (autotune_lqr.py) to fix PHYS-002's Case 1 finding (offline/physics-only marginal 3.0s-spec failure), verify with real Gazebo runs, decide keep-or-revert.",
+  "timestamp": "2026-08-29T11:35:00Z",
+  "bugs_found_and_fixed": [
+    {
+      "id": "autotune-lqr-broken-since-refactor-001",
+      "description": "autotune_lqr.py's main() called DoublePendulum(PendulumParams()) with no constructor args -- TypeError since REFACTOR-001 requires explicit PendulumParams fields loaded from plant_params.yaml. Fixed to DoublePendulum() (calls PendulumParams.load() internally), matching every other caller.",
+      "kept_regardless_of_gain_decision": true
+    }
+  ],
+  "search": {
+    "script": "autotune_lqr.py --scenario nominal_balance",
+    "params": {"maxiter": 40, "popsize": 15},
+    "wall_time_s": 953.8,
+    "best_weights": {"q1": 187.0706, "q2": 174.4019, "q1d": 50.4355, "q2d": 3.2031, "qi1": 0.0059, "qi2": 11.0445, "r1": 0.0106, "r2": 0.0822},
+    "offline_result": {"stable": true, "settling_time_q1_s": 0.87, "settling_time_q2_s": 0.0, "overshoot_q1_deg": 2.54, "overshoot_q2_deg": 0.79, "final_q1_deg": -0.01, "passed": true}
+  },
+  "verification": {
+    "offline_recheck": {"settling_time_q1_s": 0.87, "settling_time_q2_s": 0.0, "matches_search": true},
+    "physics_only_n3": {"n_runs": 3, "n_pass_control": 3, "settling_time_q1_s_all_runs": [0.86, 0.86, 0.86], "deterministic": true},
+    "ros2_e2e_n5_new_gain": {
+      "n_runs": 5, "n_valid": 5, "n_pass_control": 0,
+      "settling_time_q1_s_all_runs": ["inf", 4.3309, 4.9980, "inf", 4.8407],
+      "settling_time_q2_s_all_runs": ["inf", "inf", "inf", "inf", "inf"],
+      "overshoot_q1_deg_range": [7.02, 23.73],
+      "overshoot_q2_deg_range": [7.06, 14.04]
+    },
+    "ros2_e2e_n5_old_gain_for_comparison": {
+      "source": "PHYS-002's evidence/ros2_e2e_lqr_batch (N=5, 4 valid, 1 INVALID_INFRA)",
+      "n_pass_control": 0,
+      "settling_time_q1_s_all_valid_runs": ["inf", "inf", "inf", "inf"],
+      "settling_time_q2_s_all_valid_runs": [2.768, 2.782, 2.708, "inf"],
+      "overshoot_q1_deg_range": [16.32, 16.49],
+      "overshoot_q2_deg_range": [2.18, 7.14]
+    }
+  },
+  "decision": {
+    "outcome": "reverted to original gain",
+    "rationale": "Both gains fail the real ROS2 e2e acceptance test completely (0% pass rate either way). The new gain does not fix the real-Gazebo problem and is worse by several measures: q2 never settles at all (5/5 vs 2/4 finite before), q2 overshoot roughly doubles (7.1-14.0deg vs 2.2-7.1deg). Consistent with control-theory expectation that a more aggressive/faster gain has less delay/jitter margin, making it MORE sensitive to the ROS2-layer timing issues PHYS-002 already found, not less.",
+    "files_reverted": ["double_pendulum_control/lqr_node.py", "double_pendulum_control/design_lqr_gains.py"],
+    "deployed_cache_regenerated_to_match": true,
+    "new_gain_data_preserved": "fully documented here and in evidence/, not discarded"
+  },
+  "interpretation": "Fixing Case 1 in isolation does not fix, and can measurably worsen, Case 2 symptoms -- the two are not simply additive. A gain search using only an offline/idealized cost function (settling time, overshoot, rms error) will keep finding gains that look excellent on paper and perform no better, or worse, for the real system, because it has no way to penalize reduced robustness to timing jitter/delay.",
+  "acceptance_checks": {
+    "search_run_and_recorded": true,
+    "offline_verification_matches_search": true,
+    "n3_physics_only_verification": true,
+    "n5_ros2_e2e_verification": true,
+    "explicit_keep_or_revert_decision_with_rationale": true,
+    "non_deployed_gain_numbers_fully_documented": true
+  },
+  "passed": true,
+  "next_step": "A gain search objective that accounts for real (or jittered) behavior, not just idealized offline settling/overshoot, is needed before another retune attempt. PHYS-002's Case 2 follow-up (correlate DIAG-001 jitter timestamps against real-vs-physics-only trajectory divergence) is the more direct path to fixing the real system and should come first."
+}

@@ -172,7 +172,7 @@ def main():
 
     print("Deriving plant dynamics (sympy, one-time cost, ~1 min)...")
     t0 = time.time()
-    pend = DoublePendulum(PendulumParams())
+    pend = DoublePendulum()  # loads PendulumParams.load() -> current plant_params.yaml (REFACTOR-001)
     A, B = linearize(pend)
     A_aug, B_aug = augment_with_integral(A, B)
     print(f"  done in {time.time() - t0:.1f}s")

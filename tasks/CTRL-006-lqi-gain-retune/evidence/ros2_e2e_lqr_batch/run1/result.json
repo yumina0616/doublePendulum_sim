@@ -1,0 +1,47 @@
+{
+  "scenario": "nominal_balance",
+  "controller": "lqr",
+  "timestamp": "2026-08-29T20:24:25",
+  "n_samples_joint_states": 791,
+  "n_samples_effort": 430,
+  "metrics": {
+    "stable": true,
+    "settling_time_q1_s": Infinity,
+    "settling_time_q2_s": Infinity,
+    "overshoot_q1_deg": 7.015017369817558,
+    "overshoot_q2_deg": 11.428814724342377,
+    "rms_error_q1_rad": 0.05374220858536974,
+    "rms_error_q2_rad": 0.05529632562953345,
+    "max_abs_tau1_nm": 60.0,
+    "max_abs_tau2_nm": 30.0,
+    "final_q1_deg": -4.8177211500419475,
+    "final_q2_deg": 6.322206558212708
+  },
+  "acceptance": {
+    "stable": true,
+    "settling_time_q1_s": {
+      "max": 3.0
+    },
+    "settling_time_q2_s": {
+      "max": 3.0
+    },
+    "overshoot_q1_deg": {
+      "max": 30.0
+    },
+    "overshoot_q2_deg": {
+      "max": 30.0
+    },
+    "max_abs_tau1_nm": {
+      "max": 60.0
+    },
+    "max_abs_tau2_nm": {
+      "max": 30.0
+    }
+  },
+  "passed": false,
+  "failures": [
+    "settling_time_q1_s=inf exceeds max 3.0",
+    "settling_time_q2_s=inf exceeds max 3.0"
+  ],
+  "verdict": "FAIL_CONTROL"
+}
